@@ -1,6 +1,6 @@
 TF ChIP-seq pipelines
 =========
-Pipelines for analysis of transcription factors ChIP-seq data
+Analysis of TF ChIP-seq data
 ---------
 These are pipelines for analysis of ChIP-seq data of transcription factors. Perform all tasks from sample quality control to target gene annotation, GO analysis, enrichment correlations, etc, and will be the basis for my ChIP-seq project in Oikopleura.
 
@@ -12,20 +12,7 @@ Hardcoded paths, names, etc... are prohibited, everything should be passed as ar
 
 # Installation
 
-
 # Dependencies
 
-##
-- fastqc 
-- bamtools
-- samtools
-- 
-
-## R packages
-
-
-### Bioconductor
-
-
 # Documentation
-see pipeline_description.md
+see [Pipeline Description](planning/pipeline_description.md)

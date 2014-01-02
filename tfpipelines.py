@@ -17,23 +17,23 @@ from optparse import OptionParser
 def main():
     # option parser
     usage = 'python script.py [OPTIONS] samples.txt'
-    parser = OptionParser(usage=usage)
+    parser = OptionParser(usage = usage)
     
     parser.add_option("-b", "--basedir",
-    type="str", dest="base", default='.',
+    type="str", dest="basedir", default = os.path.abspath("."),
     help="workspace base directory")
     
     parser.add_option("-a", "--annotdir",
-    type="str", dest="annot", default='./annotation',
+    type="str", dest="annot", default = os.path.abspath("./annotation"),
     help="directory with genome annotation")
 
     parser.add_option("-o", "--outdir",
-    type="str", dest="out", default='./output',
+    type="str", dest="outdir", default = os.path.abspath("./output"),
     help="output directory")
 
     parser.add_option("-l", "--log",
-    type="str", dest="log", default='log.txt',
-    help="directory/filename to store log file to: default = log.txt")
+    type="str", dest="log", default = os.path.abspath("log.txt"),
+    help="directory/filename to store log file to. Default (./log.txt)")
 
     # read arguments and options
     (options, args) = parser.parse_args()
@@ -45,7 +45,7 @@ def main():
         sys.exit(0)
 
     # Log configuration
-    logging.basicConfig(filename=options.log,level=logging.DEBUG)
+    logging.basicConfig(filename=options.log, level=logging.DEBUG, format='%(asctime)s %(message)s')
         # Here's the usage:
         #logging.debug('This message should go to the log file')
         #logging.info('So should this')
@@ -57,7 +57,12 @@ def main():
     # open samples file
     samples = readSamples(samplesfile)
     print samples
-    os.system("ls")
+    
+    # get annotation for all species in use
+    os.system('sh %s/pipelines/asd.sh' % options.basedir)
+
+    # call mapping pipeline for each sample
+    os.system('sh %s/pipelines/asd.sh' % options.basedir)
 
     #write_some_files(computed, output.txt)
 
@@ -65,6 +70,7 @@ def readSamples(infile):
     # open input file, read it and returns it
     try:
         with open(infile, 'r') as f:
+            logging.info('Opened file "%s" in read mode' % infile)
             return [line.strip("\n").split("\t") for line in f]
 
     except IOError:
@@ -75,31 +81,6 @@ def writeFile(output, outfile):
     wr = csv.writer(outfile, delimiter='\t')
     wr.writerow(output)
     outfile.close()
-    writeLog('Successfully wrote %d' % outfile, program.log)
-
-
-def do_some_work(options, args):
-    # does some computation
-    for i, line in enumerate(infile):
-        print "Doing...."
-        row = line.split('\t')
-        # do actual computation here and produce output
-        output.append("something")
-    writeLog('Done, computed %d' % computation, program.log)
-
-
-class Log(object):
-    """Log of operations"""
-    def __init__(self, logfile):
-        super(Log, self).__init__()
-        logfile = logfile
-        
-    def writeLog(string, filename):
-        # append line of string to log file of filename
-        f = open(filename, 'a')
-        f.write('%s %s\n' % (strftime("%H:%M:%S", localtime()), string))
-        f.close()
-
 
 if __name__ == '__main__':
     try:

@@ -10,9 +10,11 @@ get_files.sh
 - QC (fastq)
 fastqc_qc.sh
 
+## Mapping and conversions
 - Mapping (bwa) and read extension
 bwa_mapping.sh
 
+## Coverage, normalization and correlation
 - Window coverage (200bp 100bp sliding windows)
 	- Make windows in genome
 	200bp_sliding_windows.sh
@@ -20,8 +22,8 @@ bwa_mapping.sh
 	- Calculate coverage on windows
 	genome_coverage.sh
 
-	- Concatenation and input normalization
-	concatenate_and_normalize.R
+- Concatenation and input normalization
+concatenate_and_normalize.R
 
 - Sample correlation
 sample_correlations.R
@@ -29,6 +31,9 @@ sample_correlations.R
 ## TF binding characterization
 - Peak finding / ChIP enriched regions (peakzilla)
 call_peaks.sh
+
+- Peak statistics
+peak_stats.sh
 
 - Peak genomic location
 genome_distribution.sh

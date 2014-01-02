@@ -14,5 +14,8 @@ Hardcoded paths, names, etc... are prohibited, everything should be passed as ar
 
 # Dependencies
 
+# Usage
+tfpipelines.sh [-options] [-h help]
+
 # Documentation
 see [Pipeline Description](planning/pipeline_description.md)

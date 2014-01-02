@@ -15,7 +15,10 @@ Hardcoded paths, names, etc... are prohibited, everything should be passed as ar
 # Dependencies
 
 # Usage
-tfpipelines.sh [-options] [-h help]
+tfpipelines.sh [-options] samplesfile
+
+## Samples file
+One sample per line with sample attributes tab-delimited: name, IP/input, filename, organism (see example_samples.txt)
 
 # Documentation
 see [Pipeline Description](planning/pipeline_description.md)

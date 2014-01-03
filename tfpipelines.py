@@ -16,7 +16,7 @@ from optparse import OptionParser
 
 def main():
     # option parser
-    usage = 'python script.py [OPTIONS] samples.txt'
+    usage = 'python tfpipelines.py [OPTIONS] samples.tsv'
     parser = OptionParser(usage = usage)
     
     parser.add_option("-b", "--basedir",
@@ -24,7 +24,7 @@ def main():
     help="workspace base directory")
     
     parser.add_option("-a", "--annotdir",
-    type="str", dest="annot", default = os.path.abspath("./annotation"),
+    type="str", dest="annotdir", default = os.path.abspath("./annotation"),
     help="directory with genome annotation")
 
     parser.add_option("-o", "--outdir",
@@ -35,9 +35,10 @@ def main():
     type="str", dest="log", default = os.path.abspath("log.txt"),
     help="directory/filename to store log file to. Default (./log.txt)")
 
-    # read arguments and options
+    # read arguments and options, assign to independent variables
+    global options
     (options, args) = parser.parse_args()
-
+    
     if len(args) > 2 or len(args) == 0:
         # return help message if argument number is incorrect
         print __doc__
@@ -51,30 +52,58 @@ def main():
         #logging.info('So should this')
         #logging.warning('And this, too')
 
+    # temporary list of suppported genomes
+    global supportedSpecies
+    supportedSpecies = ["human", "oikopleura"]
+
     # grab positional argument (samples file)
     samplesfile = args[0]
 
     # open samples file
     samples = readSamples(samplesfile)
-    print samples
-    
+
+    species = set()
+    for sample in samples:
+        species.add(sample[3])
+    species = list(species)
+
+    for specie in species:
+        if (specie not in supportedSpecies):
+            logging.debug('Tried to use unsupported "%s" specie' % specie)
+            raise NotImplementedError("%s is not yet supported. Please see list of supported species in the documentation." %specie)
+
+
     # get annotation for all species in use
-    os.system('sh %s/pipelines/asd.sh' % options.basedir)
+    for specie in species:
+        getAnnotation(specie)
+            
 
     # call mapping pipeline for each sample
-    os.system('sh %s/pipelines/asd.sh' % options.basedir)
+    #os.system('sh %s/pipelines/asd.sh' % options.basedir)
 
     #write_some_files(computed, output.txt)
 
 def readSamples(infile):
-    # open input file, read it and returns it
+    """opens input file, read it and returns it"""
     try:
         with open(infile, 'r') as f:
             logging.info('Opened file "%s" in read mode' % infile)
             return [line.strip("\n").split("\t") for line in f]
 
     except IOError:
-        print("Sample file not openable or doesn't exist")
+        logging.debug("Error opening '%s' file for reading samples" % infile)
+        raise IOError("Sample file '%s' not openable or doesn't exist" % infile)
+
+
+def getAnnotation(specie):
+    """gets annotation"""
+    logging.info('Trying to get annotation for "%s"' % specie)
+    if (specie in supportedSpecies):
+        os.system('./scripts/get_annotation.sh -s %s %s' % (specie, options.basedir))
+    else:
+        logging.debug('Tried to get annonation for unsupported "%s" specie' % specie)
+        raise NotImplementedError("%s is not yet supported. Please see list of supported species in the documentation." %specie)
+
 
 def writeFile(output, outfile):
     # write to file

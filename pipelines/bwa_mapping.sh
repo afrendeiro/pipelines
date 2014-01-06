@@ -37,8 +37,10 @@ echo $SAMPLE
 
 exit
 
-GENOMEREF="data/human/annotation/hg19/hg19.fa"
-GENOMESIZES="data/human/annotation/hg19/hg19_ChrSizes.tsv"
+INFILE="GSM810993_E2F7_Hela"
+DIR="/home/s3/afr/data/human/E2F7"
+GENOMEREF="/home/s3/afr/data/human/annotation/hg19/hg19"
+GENOMESIZES="/home/s3/afr/data/human/annotation/hg19/hg19_ChrSizes.tsv"
 
 if [ -s ${OUTDIR}/${INFILE}.bwa.bam ]; then
     echo "Results for $INFILE already exist: ${OUTDIR}/${INFILE}.bwa.bam, skipping.."
@@ -48,7 +50,7 @@ else
 
     #align to genome, output .bam file
     # filters for quality >=q30
-	bwa aln -t 8 $GENOMEREF ${DIR}/${INFILE}.fastq | bwa samse $GENOMEREF - ${DIR}/${INFILE} | samtools view -b -q 30 -u -T $GENOMEREF - | samtools sort - ${OUTDIR}/${EXPERIMENT_NAME}.bwa.bam
+	bwa aln -t 8 $GENOMEREF ${DIR}/${INFILE}.fastq | bwa samse $GENOMEREF - ${DIR}/${INFILE}.fastq | samtools view -b -q 30 -u -T $GENOMEREF - | samtools sort - ${OUTDIR}/${EXPERIMENT_NAME}.bwa.bam
 	
     # create index
     samtools index ${OUTDIR}/${EXPERIMENT_NAME}.bwa.bam

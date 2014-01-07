@@ -1,15 +1,21 @@
 #!/bin/bash
 
-if [ $# -lt 3 ] ; then
-   echo "You must specify at least 3 arguments. See help with $0 -h"
-   exit 1
-fi
-
 usage() {
-  echo "Usage: $0 -r <path> -i <path> -o <path> -g <file> [-h]"
-  echo "-r rootdir"
-  exit
+	echo "Usage: $0 -i <infile.fastq> -g <genomeref> [<outputdir>]"
+	echo "-i	Input file in fastq format"
+	echo "-g	Genome reference name. Should not have extension."
+	echo "		bwa index with same name must exist"
+	echo "-o	OPTIONAL: Directory for output files. Will be"
+	echo "		created if does not exist. Default: current directory"
+	exit
 }
+
+if [ $# -lt 3 ] ; then
+	echo "You must specify at least 3 arguments."
+	echo 
+	usage
+	exit 1
+fi
 
 #Process the arguments
     # options that require arguments have a : in front of them
@@ -18,51 +24,47 @@ do
     case "$opt" in
         h)  usage;;
         i)  INFILE="`readlink -e $OPTARG`";;
-        o)  OUTDIR="`readlink -f $OPTARG`";;
+        g)  GENOMEREF=$OPTARG;;
         \?) usage;;
    esac
 done
 
-# Capture additional genome directory argument if given, if not set to current dir
+# Capture additional output directory argument if given, if not set to current dir
 shift $(($OPTIND - 1))
 if [[ $1 ]]; then
-    GENOMEDIR="`readlink -f $1`"
+    OUTDIR="`readlink -f $1`"
+    mkdir -p $OUTDIR
 else
-    GENOMEDIR="`readlink -f .`"
+    OUTDIR="`readlink -f .`"
 fi
-echo $GENOMEDIR
 
-SAMPLE=${INFILE%.*}
-echo $SAMPLE
+BASENAME=`basename $INFILE .fastq`
 
-exit
 
-INFILE="GSM810993_E2F7_Hela"
-DIR="/home/s3/afr/data/human/E2F7"
-GENOMEREF="/home/s3/afr/data/human/annotation/hg19/hg19"
-GENOMESIZES="/home/s3/afr/data/human/annotation/hg19/hg19_ChrSizes.tsv"
-
-if [ -s ${OUTDIR}/${INFILE}.bwa.bam ]; then
-    echo "Results for $INFILE already exist: ${OUTDIR}/${INFILE}.bwa.bam, skipping.."
+if [ -s ${OUTDIR}/${BASENAME}.bwa.bam ]; then
+    echo "Results for $BASENAME already exist: ${OUTDIR}/${BASENAME}.bwa.bam, skipping.."
 else
-    echo "Running bwa alignment for $EXPERIMENT_NAME.."  #output to stdout
-	echo "FILE:$DIR/$INFILE NAME:$EXPERIMENT_NAME OUTDIR:$OUTDIR .."
+    echo "Running bwa alignment for $BASENAME.."
 
     #align to genome, output .bam file
     # filters for quality >=q30
-	bwa aln -t 8 $GENOMEREF ${DIR}/${INFILE}.fastq | bwa samse $GENOMEREF - ${DIR}/${INFILE}.fastq | samtools view -b -q 30 -u -T $GENOMEREF - | samtools sort - ${OUTDIR}/${EXPERIMENT_NAME}.bwa.bam
+	bwa aln -t 24 $GENOMEREF ${DIR}/${INFILE} | bwa samse $GENOMEREF - ${DIR}/${INFILE} | samtools view -b -q 30 -u -T $GENOMEREF - | samtools sort - ${OUTDIR}/${BASENAME}.bwa
 	
     # create index
-    samtools index ${OUTDIR}/${EXPERIMENT_NAME}.bwa.bam
-    mv ${OUTDIR}/${EXPERIMENT_NAME}.bwa.bam.bai ${OUTDIR}/${EXPERIMENT_NAME}.bwa.bai
+    echo "Creating index for $BASENAME"
+    samtools index ${OUTDIR}/${BASENAME}.bwa.bam
+    mv ${OUTDIR}/${BASENAME}.bwa.bam.bai ${OUTDIR}/${BASENAME}.bwa.bai
 
-    # count reads, export to file
-    samtools view -c ${OUTDIR}/${EXPERIMENT_NAME}.bwa.bam | awk -v var=$EXPERIMENT_NAME '$2 = $2 FS var' > ${OUTDIR}/${INFILE}.readcount.txt
+    # count mapped reads, export to file
+    echo "Counting mapped reads for $BASENAME"
+    samtools view -c -F 4 ${OUTDIR}/${BASENAME}.bwa.bam | awk -v var=$BASENAME '$2 = $2 FS var' > ${OUTDIR}/${BASENAME}.readcount.txt
 
     # convert to bed
-    bamToBed -i ${OUTDIR}/${EXPERIMENT_NAME}.bwa.bam ${OUTDIR}/${EXPERIMENT_NAME}.bwa.bed
+    echo "Converting $BASENAME to bed format"
+    bamToBed -i ${OUTDIR}/${BASENAME}.bwa.bam > ${OUTDIR}/${BASENAME}.bwa.bed
 
     # extend reads
-    slopBed -g $GENOMESIZES -l 0 -r 100 -s | sortBed | gzip -c > ${OUTDIR}/${EXPERIMENT_NAME}.bwa.ext.bed
+    #echo "Extending reads for $BASENAME"
+    #slopBed -g $GENOMESIZES -l 0 -r 100 -s | sortBed | gzip -c > ${OUTDIR}/${BASENAME}.bwa.ext.bed
 
 fi

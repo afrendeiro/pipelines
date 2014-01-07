@@ -1,17 +1,17 @@
 #!/bin/bash
 
 usage() {
-	echo "Usage: $0 -i <infile.fastq> -g <genomeref> [<outputdir>]"
+	echo "Usage: $0 -i <infile.fastq> -g <genomeref> [-o]"
 	echo "-i	Input file in fastq format"
-	echo "-g	Genome reference name. Should not have extension."
+	echo "-g	Genome reference name. Should not have extension (e.g. data/human/hg19/hg19)"
 	echo "		bwa index with same name must exist"
 	echo "-o	OPTIONAL: Directory for output files. Will be"
 	echo "		created if does not exist. Default: current directory"
 	exit
 }
 
-if [ $# -lt 3 ] ; then
-	echo "You must specify at least 3 arguments."
+if [ $# -lt 2 ] ; then
+	echo "You must specify at least 2 arguments."
 	echo 
 	usage
 	exit 1
@@ -19,23 +19,22 @@ fi
 
 #Process the arguments
     # options that require arguments have a : in front of them
-while getopts hi:o:g: opt
+while getopts hi:g: opt
 do
     case "$opt" in
         h)  usage;;
         i)  INFILE="`readlink -e $OPTARG`";;
         g)  GENOMEREF=$OPTARG;;
+		o)	OUTDIR="`readlink -f $OPTARG`"
+			mkdir -p $OUTDIR;;
         \?) usage;;
    esac
 done
 
-# Capture additional output directory argument if given, if not set to current dir
+# If output directory argument is not set, set to current dir
 shift $(($OPTIND - 1))
-if [[ $1 ]]; then
-    OUTDIR="`readlink -f $1`"
-    mkdir -p $OUTDIR
-else
-    OUTDIR="`readlink -f .`"
+if [[ ! $OUTDIR ]]; then
+	OUTDIR="`readlink -f ./`"
 fi
 
 BASENAME=`basename $INFILE .fastq`
@@ -47,7 +46,6 @@ else
     echo "Running bwa alignment for $BASENAME.."
 
     #align to genome, output .bam file
-    # filters for quality >=q30
 	bwa aln -t 24 $GENOMEREF ${DIR}/${INFILE} | bwa samse $GENOMEREF - ${DIR}/${INFILE} | samtools view -b -q 30 -u -T $GENOMEREF - | samtools sort - ${OUTDIR}/${BASENAME}.bwa
 	
     # create index

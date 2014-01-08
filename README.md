@@ -1,14 +1,12 @@
 TF ChIP-seq pipelines
 =========
-Analysis of TF ChIP-seq data
+Compilation of pipelines and scripts for TF ChIP-seq data analysis
 ---------
-These are pipelines for analysis of ChIP-seq data of transcription factors. Perform all tasks from sample quality control to target gene annotation, GO analysis, enrichment correlations, etc, and will be the basis for my ChIP-seq project in Oikopleura.
+These are pipelines for analysis of ChIP-seq data of transcription factors. Tasks include raw sample quality control, target gene annotation, GO analysis, enrichment correlations, and more. They are the basis for my ChIP-seq project in Oikopleura.
 
-One goal of this pipeline is to be reproducible and therefore runnable on any environment provided dependencies are satisfied.
+One goal of this repository is to increase reproducibility when reruning the same analysis.
 
-This pipeline should work with TF ChIP-seq samples of multiple organisms, provided that initial specifications are set.
-
-Hardcoded paths, names, etc... are prohibited, everything should be passed as argument through the pipeline.
+These pipelines should work with TF ChIP-seq samples of multiple organisms, provided that anotation is provided.
 
 # Installation
 
@@ -17,13 +15,8 @@ Hardcoded paths, names, etc... are prohibited, everything should be passed as ar
 	git clone git@github.com:afrendeiro/TF_ChIP-seq_pipelines.git
 	cd TF_ChIP-seq_pipelines-master
 
-## Manual download
-	
-	wget https://github.com/afrendeiro/TF_ChIP-seq_pipelines/archive/master.zip
-	unzip master.zip
-	cd TF_ChIP-seq_pipelines-master
-
 # Dependencies
+-
 - Python
 - R
 	- Bioconductor

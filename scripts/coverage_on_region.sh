@@ -1,41 +1,50 @@
-#! /bin/bash
+#!/bin/bash
 
-# Function to calculate coverage in those windows for each ChIP sample
-calculate_coverage () {
-	WINDOWSDIR=$2
-	WINDOWS=`ls $WINDOWSDIR`
-	REFDIR=$3
-	OUTDIR=$4
-	sample=$1
-	SAMPLE=${REFDIR}/$sample
-	for window in $WINDOWS
-	do
-	echo "doing ${sample/_*} sample on window $WINDOW"
-	WINDOW=${window/heatmap_models_/}
-	WINDOW=${WINDOW/.txt/}
-	
-	intersectBed -wa -wb -a $SAMPLE -b ${WINDOWSDIR}/$window | sortBed | cut -f 1,2,3,4,8 > $OUTDIR/${sample/_*}.$WINDOW.TTScoverage.bed
-	done
+usage() {
+	echo "Usage: $0 -i <input file> -g <genome windows directory> [-o]"
+	echo "-i	Input file in bed format"
+	echo "-w	Directory with genomic windows (e.g. data/human/genome_windows/TSS)."
+	echo "-o	OPTIONAL: Directory for output files. Will be"
+	echo "		created if does not exist. Default: current directory"
+	exit
 }
 
-# Run on samples for coverage:
-# add full path to sample file (extended reads bed file)
-REFDIR="/home/s3/afr/data/human/E2F7"
-OUTDIR="/home/s3/afr/data/human/E2F7/TSS_coverage"
-SAMPLES="E2F7_genome_coverage_norm.bed"
+if [ $# -lt 2 ] ; then
+	echo "You must specify at least 2 arguments."
+	echo 
+	usage
+	exit 1
+fi
 
-## for TSS coverage
-
-for sample in $SAMPLES
+#Process the arguments
+    # options that require arguments have a : in front of them
+while getopts hi:w:o: opt
 do
-	calculate_coverage $sample ~/data/human/genome_windows/TSS/ $REFDIR $OUTDIR
+    case "$opt" in
+        h)  usage;;
+        i)  INFILE="`readlink -m $OPTARG`";;
+		w)  WINDOWSDIR="`readlink -m $OPTARG`";;
+		o)	OUTDIR="`readlink -m $OPTARG`"
+			mkdir -p $OUTDIR;;
+        \?) usage;;
+   esac
 done
 
-REFDIR="/home/s3/afr/data/human/E2F7"
-OUTDIR="/home/s3/afr/data/human/E2F7/TTS_coverage"
-SAMPLES="E2F7_genome_coverage_norm.bed"
-## for TTS coverage
-for sample in $SAMPLES
-do
-	calculate_coverage $sample ~/data/human/genome_windows/TTS/ $REFDIR $OUTDIR
+# If output directory argument is not set, set to current dir
+shift $(($OPTIND - 1))
+if [[ ! $OUTDIR ]]; then
+	OUTDIR="`readlink -f ./`"
+fi
+
+BASENAME=`basename $INFILE .bwa.bed`
+
+WINDOWS=`ls $WINDOWSDIR/heatmap_models_*`
+
+# Function to calculate coverage in those windows for each ChIP sample
+for WINDOW in $WINDOWS
+	do
+	WINDOWNAME=${WINDOW/heatmap_models_/}
+	WINDOWNAME=`basename ${WINDOWNAME/.txt/}`
+	echo "doing $BASENAME sample on window $WINDOWNAME"
+	intersectBed -wa -c -a $WINDOW -b $INFILE | sortBed | cut -f 1,2,3,4,8 > $OUTDIR/${BASENAME}.$WINDOWNAME.bed
 done

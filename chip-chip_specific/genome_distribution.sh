@@ -46,17 +46,9 @@ BASENAME=`basename $INFILE | sed 's/\(.*\)\..*/\1/'`
 
 BASENAME_SHUFFLED=${BASENAME}.shuffled
 
-
 # generate shuffled peaks
 echo "generating random peaks for $BASENAME"
 bedtools shuffle -i $INFILE -g $GENOME -excl $EXCLUDE -seed 0 | bedtools sort > ${OUTDIR}/$BASENAME_SHUFFLED.bed
-
-# get peaks sumits in bed format (not valid for ChIP-chip data)
-echo "extracting summits for $BASENAME"	
-tail -n +2 $INFILE | awk '{print $1,$5,($5+1)}' | sed '{:q;N;s/ /\t/g;t q}' > ${OUTDIR}/${BASENAME}.summits.bed
-
-echo "extracting summits for $BASENAME_SHUFFLED"	
-tail -n +2 ${OUTDIR}/$BASENAME_SHUFFLED.bed | awk '{print $1,$5,($5+1)}' | sed '{:q;N;s/ /\t/g;t q}' > ${OUTDIR}/${BASENAME_SHUFFLED}.summits.bed
 
 # Intersect 
 # reports an entry for all features (even not intercepting, 0)

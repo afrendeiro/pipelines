@@ -3,7 +3,7 @@ Description of pipeline steps
 
 ## Get static files required for analysis
 get annotation, ChIP samples, etc...
-get_files.sh
+get_annotation.sh
 
 ## Quality control
 
@@ -29,37 +29,43 @@ concatenate_and_normalize.R
 sample_correlations.R
 
 ## TF binding characterization
-- Peak finding / ChIP enriched regions (peakzilla)
-call_peaks.sh
+- TF peak finding 
+	
+	This script calls peaks using peakzilla
+	`call_peaks.sh`
 
 - Peak statistics
-peak_stats.sh
 
-- Peak genomic location
-genome_distribution.sh
-plot_genome_distribution.R
+	This script plots basic statistics on the peaks calculated by the peakfinder
+	`peak_stats.R`
 
---------
+- Peak genomic location (genome distribution and distance to TSS (abs & rel))
+	
+	These scripts associate peaks and genomic locations, and plots comparisons with random locations
+	`genome_distribution.sh`
+	`plot_genome_distribution.R`
+
 - Binding motif (MEME)
-find_motifs.sh
+
+	This script calls peaks using MEME-chip
+	`find_motifs.sh*`
+	
+	- Nº motifs per peak
+
 
 - Other TFs binding motifs
 
+
 ## TF binding context
-- "Pseudo gene" enrichment
-	TF ChIP signal enrichment in regions (TSS, TTS, all peaks - confirmation)
+- ChIP enrichment in regions (TSS, TTS, peaks)
+	
+	- This pipeline calculates a heatmap of ChIP enrichment around genomic regions of interest.
 
-	Use "heatmap" model:
-		- make "heatmap" model of 100 bp bins around region of interest (e.g. TSSs)
-	TSS_windows.R
+		1. Makes heatmap "model" of 100 bp bins around all regions of interest (e.g. TSSs) `TSS_windows.R`
 
-		- intersect normalized 200bp files with heatmap models on region of interest
-	coverage_on_region.sh
+		2. Computes ChIP coverage by intersecting ChIP files with heatmap models on region of interest `coverage_on_region.sh`
 
-	Make heatmap:
-	plot_region_coverage.R
-
-		- plot side by side (peaks, TSS, gene bodies?, TTS)
+		3. Makes heatmap and line plot of averaged enrichment for all or a set of regions `plot_region_coverage.R`
 
 - Peaks enriched in Histone mods?
 	- separated by genomic location (intergenic, TSS, intron)

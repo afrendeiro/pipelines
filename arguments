@@ -1,6 +1,0 @@
-
-
-PEAKS='output/oikopeura/ChIP-chip/ChIP-chip_Male_E2F7.peaks.bed'
-
-
-sh genome_distribution.sh -i $PEAKS -g data/oikopleura/assembly/Oikopleura_reference_chrSizes.tsv -e data/oikopleura/annotation/repeats_gaps_merged.bed -l data/oikopleura/annotation/Oikopleura_gene_models.genomic_locations.bed -t data/oikopleura/annotation/Oikopleura_gene_models.TSSs.bed -o output/oikopeura/ChIP-chip/

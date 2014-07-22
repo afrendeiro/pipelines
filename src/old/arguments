@@ -1,0 +1,6 @@
+PEAKS='output/oikopeura/ChIP-chip/ChIP-chip_Female_E2F1.peaks.bed output/oikopeura/ChIP-chip/ChIP-chip_Male_E2F1.peaks.bed output/oikopeura/ChIP-chip/ChIP-chip_Female_E2F7.peaks.bed output/oikopeura/ChIP-chip/ChIP-chip_Male_E2F7.peaks.bed'
+
+for PEAK in $PEAKS
+do
+sh genome_distribution.sh -i $PEAK  -g data/oikopleura/assembly/Oikopleura_reference_chrSizes.tsv -e data/oikopleura/annotation/repeats_gaps_merged.bed -l data/oikopleura/annotation/Oikopleura_gene_models.genomic_locations.bed -t data/oikopleura/annotation/Oikopleura_gene_models_reference.TSSs.bed -o output/oikopeura/ChIP-chip/summits
+done

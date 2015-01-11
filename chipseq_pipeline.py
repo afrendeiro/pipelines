@@ -4,6 +4,12 @@
 ChIP-seq pipeline 
 
 
+TODO:
+    check if technical replicates (TR), run pipeline for merged TRs
+    implement sub command to run either until bams for each biological replicate (BR) or downstream from there
+    decide how to treat already existing files (add option, decide default)
+
+    (maybe) implementtt way to check if slurm job is finished and then run 2nd part if there were no errors
 
 """
 
@@ -33,7 +39,8 @@ def main(args, logger):
     args.project_root = os.path.abspath(args.project_root)
     logger.debug("Checking if %s directory exists and is writable." % args.project_root)
     if not os.access(args.project_root, os.W_OK):
-        logger.error("%s does not exist, or user has no write access." % args.project_root)
+        logger.error("%s does not exist, or user has no write access.\n\
+Use option '-r' '--project-root' to set a non-default project root path." % args.project_root)
         sys.exit(1)
 
     # project directories
@@ -66,49 +73,73 @@ def main(args, logger):
     }
     adapterFasta = "/home/arendeiro/adapters/chipmentation.fa"
     
+    ### Other static info
+    broadFactors = ["H3K27me3", "H3K36me3", "H3K9me3"]
+
+
     ### Parse sample information
     args.csv = os.path.abspath(args.csv)
 
-    # check it exists
-    if not os.path.exists(args.csv):
+    # check if exists and is a file
+    if not os.path.isfile(args.csv):
         logger.error("Sample annotation '%s' does not exist, or user has no read access." % args.csv)
         sys.exit(1)
     
     # read in
     samples = pd.read_csv(args.csv)
 
+    # TODO:
     # Perform checks on the variables given
     # (e.g. genome in genomeIndexes)
 
 
     # start pipeline
-    jobName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
+    projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
 
-    # Preprocess each sample individually
-    for sample in xrange(len(samples)):
+
+    # Check if there are technical replicates
+    variables = samples.columns.tolist()
+    exclude = ["sampleName", "experimentName", "filePath", "technicalReplicate"]
+    [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
+
+    unique = samples.replace(np.nan, -1).groupby(variables).apply(len).index.values
+
+    biologicalReplicates = dict()
+    for sample in xrange(len(unique)):
+        replicate = pd.Series(unique[sample],index=variables)
+        for row in xrange(len(samples.replace(np.nan, -1)[variables])):
+            if (replicate == samples.replace(np.nan, -1)[variables].ix[row]).all():
+                if sample not in biologicalReplicates:
+                    biologicalReplicates[sample] = [(row, samples.ix[row])]
+                else:
+                    biologicalReplicates[sample] += [(row, samples.ix[row])]
+
+    # Preprocess biological replicates
+    for sample in xrange(len(biologicalReplicates)):
         # if sampleName is not provided, use a concatenation of several variable (excluding longest)
-        if "sampleName" in samples.columns and str(samples["sampleName"][sample]) != "nan":
-            sampleName = samples["sampleName"][sample]
+        if "sampleName" in samples.columns and str(samples["sampleName"][biologicalReplicates[sample]][0]) != "nan":
+            sampleName = samples["sampleName"][biologicalReplicates[sample][0]]
         else:
             variables = samples.columns.tolist()
             exclude = ["sampleName", "filePath", "genome", "tagmented"]
             [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
-            sampleName = string.join([str(samples[var][sample]) for var in variables], sep="_")
+            sampleName = string.join([str(samples[var][biologicalReplicates[sample][0]]) for var in variables], sep="_")
             logger.debug("No sample name provided, using concatenation of variables supplied")
+
+        jobName = projectName + "_" + sampleName
 
         # check if sample is tagmented or not:
         tagmented = samples["tagmented"][sample] == "yes" or samples["tagmented"][sample] == 1
 
-        # run complete pipeline
-        if args.stage == "all":
-            jobCode = slurm_header(
-                jobName=jobName,
-                output=os.path.join(projectDir, "runs", jobName + "_" + sampleName + ".slurm.log"),
-                queue="shortq",
-                time="10:00:00",
-                cpusPerTask=16,
-                memPerCpu=2000
-            )
+        # assemble commands
+        jobCode = slurm_header(
+            jobName=jobName,
+            output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
+            queue=args.queue,
+            time=args.time,
+            cpusPerTask=args.cpus,
+            memPerCpu=args.mem
+        )
         if args.stage in ["all", "bam2fastq"]:
             jobCode += bam2fastq(
                 inputBam=samples["filePath"][sample],
@@ -199,7 +230,7 @@ def main(args, logger):
         jobCode += slurm_footer()
 
         # Output file name
-        jobFile = os.path.join(projectDir, "runs", jobName + "_" + sampleName + ".sh")
+        jobFile = os.path.join(projectDir, "runs", jobName + ".sh")
 
         with open(jobFile, 'w') as handle:
             handle.write(textwrap.dedent(jobCode))
@@ -282,6 +313,18 @@ def slurm_submit_job(jobFile):
     return os.system(command)
 
 
+def mergeBams(outputBam, *inputBams):
+    command = """
+    # Merging bam files from replicates
+    module load samtools
+
+    samtools merge {0} {1}
+
+    """.format(outputBam, (" ".join(["%d"] * len(inputBams))) % tuple(inputBams))
+
+    return command
+
+
 def bam2fastq(inputBam, outputFastq):
     command = """
     # Converting original Bam file to Fastq
@@ -312,7 +355,7 @@ def trimAdapters(inputFastq, outputFastq, adapters):
     # Trim adapters from sample
     module load trimmomatic/0.32
 
-    java -jar `which trimmomatic-0.32.jar` SE {0} {1}
+    java -jar `which trimmomatic-0.32.jar` SE {0} {1} \\
     ILLUMINACLIP:{2}:1:40:15 \\
     LEADING:3 TRAILING:3 \\
     SLIDINGWINDOW:4:10 \\
@@ -339,6 +382,8 @@ def bowtie2Map(inputFastq, outputBam, genomeIndex, cpus):
 
 def shiftReads(inputBam, outputBam):
     outputBam = re.sub("\.bam" , "", outputBam)
+    ### TODO:
+    # Implement read shifting with HTSeq or Cython
     command = """
     # Shift read of tagmented sample
     module load samtools
@@ -413,19 +458,15 @@ def qc():
     raise NotImplemented
 
 
-def mergeReplicates():
+def bamToUCSC(inputBam):
     raise NotImplemented
 
 
-def bamToUCSC():
+def macs2CallPeaks(treatmentBam, controlBam, outputDir, noModel=False, broad=False):
     raise NotImplemented
 
 
-def macs2CallPeaks():
-    raise NotImplemented
-
-
-def sppCallPeaks():
+def sppCallPeaks(treatmentBam, controlBam, outputDir, broad=False):
     raise NotImplemented
 
 
@@ -452,6 +493,14 @@ if __name__ == '__main__':
         description = 'ChIP-seq pipeline',
         usage       = 'python chipseq_pipeline.py [OPTIONS] projectName annotation.csv'
     )
+
+    # subcommands
+    # subparsers = parser.add_subparsers(title='Sub commands',
+    #                                description='Valid subcommands',
+    #                                help='individual: Process biological replicate samples individualy. comparison: Merge biological replicates and perform comparisons.')
+    # subparsers.add_parser('individual')
+    # subparsers.add_parser('comparison')
+    # parser.parse_args(['-h'])
     
     # positional arguments
     parser.add_argument('project_name', help="Project name.", type=str)
@@ -467,6 +516,13 @@ if __name__ == '__main__':
                         help='Run only these stages. Default=all.', type=str)
     parser.add_argument('-c', '--cpus', default=16, dest='cpus',
                         help='Number of CPUs to use. Default=16.', type=int)
+    parser.add_argument('-m', '--mem-per-cpu', default=2000, dest='mem',
+                        help='Memory per CPU to use. Default=2000.', type=int)
+    parser.add_argument('-q', '--queue', default="shortq", dest='queue',
+                        choices=["shortq", "mediumq", "longq"],
+                        help='Queue to submit jobs to. Default=shortq', type=str)
+    parser.add_argument('-t', '--time', default="10:00:00", dest='time',
+                        help='Maximum time for jobs to run. Default=10:00:00', type=str)
     parser.add_argument('-l', '--log-level', default="INFO", dest='log_level',
                         choices=["DEBUG", "INFO", "ERROR"], help='Logging level. Default=INFO.', type=str)
     # parse
@@ -479,16 +535,20 @@ if __name__ == '__main__':
     logger.setLevel(levels[args.log_level])
 
     # create a file handler
-    ## (for now in current working dir, in the end copy log to projectDir)
+    # (for now in current working dir, in the end copy log to projectDir)
     handler = logging.FileHandler(os.path.join(os.getcwd(), args.project_name + ".log"))
     handler.setLevel(logging.INFO)
     # format logger
     formatter = logging.Formatter(fmt='%(levelname)s: %(asctime)s - %(message)s', datefmt='%Y/%m/%d %H:%M:%S')
     handler.setFormatter(formatter)
-
-    # add the handlers to the logger
     logger.addHandler(handler)
 
+    # create a stout handler
+    stdout = logging.StreamHandler(sys.stdout)
+    stdout.setLevel(logging.ERROR)
+    formatter = logging.Formatter(fmt='%(levelname)s: %(asctime)s - %(message)s', datefmt='%Y/%m/%d %H:%M:%S')
+    stdout.setFormatter(formatter)
+    logger.addHandler(stdout)
 
     ### Start main function
     main(args, logger)

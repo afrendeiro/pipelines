@@ -5,11 +5,10 @@ ChIP-seq pipeline
 
 
 TODO:
-    check if technical replicates (TR), run pipeline for merged TRs
     implement sub command to run either until bams for each biological replicate (BR) or downstream from there
     decide how to treat already existing files (add option, decide default)
 
-    (maybe) implementtt way to check if slurm job is finished and then run 2nd part if there were no errors
+    (maybe) implement way to check if slurm job is finished and then run 2nd part if there were no errors
 
 """
 
@@ -38,6 +37,8 @@ __email__ = "arendeiro@cemm.oeaw.ac.at"
 __status__ = "Development"
 
 def main(args, logger):
+    logger.info("Starting.")
+
     ### Directories and paths
     # check args.project_root exists and user has write access
     args.project_root = os.path.abspath(args.project_root)
@@ -167,9 +168,9 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
         tagmented = samples["tagmented"][sample] == "yes" or samples["tagmented"][sample] == 1
 
         if not tagmented:
-            bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam")
+            bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2")
         else:
-            bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted.bam")
+            bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted")
 
 
         # assemble commands
@@ -237,11 +238,11 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
                 # Relative to location of *this* file rather than relative to cwd.
                 jobCode += shiftReads(
                     inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
-                    outputBam=bam
+                    outputBam=bam + ".bam"
                 )
         if args.stage in ["all", "markduplicates"]:
             jobCode += markDuplicates(
-                inputBam=bam,
+                inputBam=bam + ".bam",
                 outputBam=bam + ".dups.bam",
                 metricsFile=os.path.join(resultsDir, sampleName + ".duplicates.txt")#,
                 #tempDir=
@@ -250,6 +251,7 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
             jobCode += removeDuplicates(
                 inputBam=bam + ".dups.bam",
                 outputBam=bam + ".nodups.bam",
+                cpus=args.cpus
             )
         if args.stage in ["all", "indexbam"]:
             jobCode += indexBam(
@@ -299,12 +301,14 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
             handle.write(textwrap.dedent(jobCode))
 
         # Submit to slurm
-        #status = slurm_submit_job(jobFile)
+        if not args.dry_run:
+            logger.info("Submitting jobs to slurm")
+            status = slurm_submit_job(jobFile)
 
-        #if status != 0:
-        #    logger.error("Slurm job '%s' not successfull" % jobFile)
-        #    sys.exit(1)
-        logger.debug("Project '%s'submission finished successfully." % args.project_name)
+            if status != 0:
+                logger.error("Slurm job '%s' not successfull" % jobFile)
+                sys.exit(1)
+            logger.debug("Project '%s'submission finished successfully." % args.project_name)
 
 
     #### FURTHER TO IMPLEMENT
@@ -352,7 +356,7 @@ def slurm_header(jobName, output, queue="shortq", ntasks=1, time="10:00:00", cpu
     #SBATCH --job-name={6}
     #SBATCH --output={7}
 
-    #SBATCH --mail-type=fail,end
+    #SBATCH --mail-type=end
     #SBATCH --mail-user={8}
 
     # Start running the job
@@ -383,6 +387,7 @@ def slurm_submit_job(jobFile):
 def mergeBams(inputBams, outputBam):
     command = """
     # Merging bam files from replicates
+    echo "Merging bam files from replicates"
     module load samtools
 
     samtools merge {0} {1}
@@ -395,6 +400,7 @@ def mergeBams(inputBams, outputBam):
 def bam2fastq(inputBam, outputFastq):
     command = """
     # Converting original Bam file to Fastq
+    echo "Converting original Bam file to Fastq"
     module load bamtools
     
     bamtools convert -in {0} -format fastq -out {1}
@@ -407,10 +413,11 @@ def bam2fastq(inputBam, outputFastq):
 def fastqc(inputFastq, outputDir):
     command = """
     # Measuring sample quality with Fastqc
+    echo "Measuring sample quality with Fastqc"
     module load java/jdk/1.7.0_65 
     module load FastQC/0.11.2
 
-    fastqc --noextract --output {0} {1}
+    fastqc --noextract --outdir {0} {1}
 
     """.format(outputDir, inputFastq)
 
@@ -419,7 +426,8 @@ def fastqc(inputFastq, outputDir):
 
 def trimAdapters(inputFastq, outputFastq, adapters):
     command = """
-    # Trim adapters from sample
+    # Trimming adapters from sample
+    echo "Trimming adapters from sample"
     module load trimmomatic/0.32
 
     java -jar `which trimmomatic-0.32.jar` SE {0} {1} \\
@@ -433,9 +441,10 @@ def trimAdapters(inputFastq, outputFastq, adapters):
     return command
 
 def bowtie2Map(inputFastq, outputBam, genomeIndex, cpus):
-    outputBam = re.sub("\.bam^" , "", outputBam)
+    outputBam = re.sub("\.bam$" , "", outputBam)
     command = """
-    # Map reads with Bowtie2
+    # Mapping reads with Bowtie2
+    echo "Mapping reads with Bowtie2"
     module load bowtie/2.2.3
     
     bowtie2 --very-sensitive -p {0} -x {1} {2} | \\
@@ -448,11 +457,12 @@ def bowtie2Map(inputFastq, outputBam, genomeIndex, cpus):
 
 
 def shiftReads(inputBam, outputBam):
-    outputBam = re.sub("\.bam" , "", outputBam)
+    outputBam = re.sub("\.bam$" , "", outputBam)
     ### TODO:
     # Implement read shifting with HTSeq or Cython
     command = """
-    # Shift read of tagmented sample
+    # Shifting read of tagmented sample
+    echo "Shifting read of tagmented sample"
     module load samtools
     module load python
     
@@ -467,13 +477,14 @@ def shiftReads(inputBam, outputBam):
     
 
 def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
-    transientFile = re.sub("\.bam" , "", outputBam)
-    outputBam = re.sub("\.bam" , "", outputBam)
+    transientFile = re.sub("\.bam$" , "", outputBam)
+    outputBam = re.sub("\.bam$" , "", outputBam)
     command = """
-    # Mark duplicates with piccard
-    module load bowtie/2.2.3
+    # Marking duplicates with piccard
+    echo "Mark duplicates with piccard"
+    module load samtools
     
-    java -Xmx4g -jar $PICARDDIR/MarkDuplicates.jar \\
+    java -Xmx4g -jar /cm/shared/apps/picard-tools/1.118/MarkDuplicates.jar \\
     INPUT={0} \\
     OUTPUT={1} \\
     METRICS_FILE={2} \\
@@ -493,12 +504,13 @@ def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
     return command
 
 
-def removeDuplicates(inputBam, outputBam):
+def removeDuplicates(inputBam, outputBam, cpus=16):
     command = """
-    # Remove duplicates with sambamba
-    sambamba markdup -t 16 -r {0} {1}
+    # Removing duplicates with sambamba
+    echo "Remove duplicates with sambamba"
+    sambamba markdup -t {2} -r {0} {1}
 
-    """.format(inputBam, outputBam)
+    """.format(inputBam, outputBam, cpus)
 
     return command
 
@@ -506,6 +518,7 @@ def removeDuplicates(inputBam, outputBam):
 def indexBam(inputBam):
     command = """
     # Indexing bamfile with samtools
+    echo "Indexing bamfile with samtools"
     module load samtools
 
     samtools index {0}
@@ -530,7 +543,8 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
     transientFile = os.path.abspath(re.sub("\.bigWig" , "", outputBigWig))
     if not tagmented:
         command = """
-    # make bigWig tracks from bam file
+    # making bigWig tracks from bam file
+    echo "making bigWig tracks from bam file"
     module load 
 
     bamToBed -i {0} | \\
@@ -547,7 +561,8 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
     """.format(inputBam, genomeSizes, transientFile, outputBigWig)
     else:
         command = """
-    # make bigWig tracks from bam file
+    # making bigWig tracks from bam file
+    echo "making bigWig tracks from bam file"
     module load 
 
     bamToBed -i {0} | \\
@@ -562,6 +577,8 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
         rm {2}.cov
     fi
 
+    chmod 755 {3}
+
     """.format(inputBam, genomeSizes, transientFile, outputBigWig, os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
 
     return command
@@ -569,7 +586,12 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
 
 def addTrackToHub(sampleName, trackURL, trackHub):
     command = """
+    # adding track to TrackHub
+    echo "Adding track to TrackHub"
     echo 'track type=bigWig name="{0}" description="{0}" visibility=3 bigDataUrl={1}' >> {2}
+
+    chmod 755 {2}
+
     """.format(sampleName, trackURL, trackHub)
 
     return command
@@ -578,7 +600,8 @@ def addTrackToHub(sampleName, trackURL, trackHub):
 def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, broad=False):
     if not broad:
         command = """
-    # call peaks with MACS2
+    # calling peaks with MACS2
+    echo "calling peaks with MACS2"
 
     macs2 callpeak -t {0} -c {1} \\
     --bw 200 \\
@@ -651,7 +674,7 @@ if __name__ == '__main__':
     parser.add_argument('-m', '--mem-per-cpu', default=2000, dest='mem',
                         help='Memory per CPU to use. Default=2000.', type=int)
     parser.add_argument('-q', '--queue', default="shortq", dest='queue',
-                        choices=["shortq", "mediumq", "longq"],
+                        choices=["develop", "shortq", "mediumq", "longq"],
                         help='Queue to submit jobs to. Default=shortq', type=str)
     parser.add_argument('-t', '--time', default="10:00:00", dest='time',
                         help='Maximum time for jobs to run. Default=10:00:00', type=str)
@@ -664,14 +687,16 @@ if __name__ == '__main__':
                         dest='url_root', type=str,
                         help='Url mapping to public_html directory where bigwig files for the project will be accessed. Default=http://www.biomedical-sequencing.at/bocklab/.')
     parser.add_argument('-l', '--log-level', default="INFO", dest='log_level',
-                        choices=["DEBUG", "INFO", "ERROR"], help='Logging level. Default=INFO.', type=str)
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help='Logging level. Default=INFO.', type=str)
+    parser.add_argument('--dry-run', dest='dry_run', action='store_true', 
+                        help='Dry run. Assemble commands, but do not submit jobs to slurm. Default=False.')
     # parse
     args = parser.parse_args()
 
 
     ### Logging
     logger = logging.getLogger(__name__)
-    levels = {"DEBUG" : 10, "INFO" : 20, "ERROR" : 40}
+    levels = {"DEBUG" : logging.DEBUG, "INFO" : logging.INFO, 'WARNING': logging.WARNING, "ERROR" : logging.ERROR, "CRITICAL" : logging.CRITICAL}
     logger.setLevel(levels[args.log_level])
 
     # create a file handler

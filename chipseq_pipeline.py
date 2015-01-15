@@ -18,11 +18,15 @@ import os
 import sys
 import logging
 import pandas as pd
+import numpy as np
 import time
 import re
 import string
 import textwrap
 import shutil
+
+# TODO: solve pandas chained assignments
+pd.options.mode.chained_assignment = None
 
 __author__ = "Andre Rendeiro"
 __copyright__ = "Copyright 2014, Andre Rendeiro"
@@ -43,11 +47,19 @@ def main(args, logger):
 Use option '-r' '--project-root' to set a non-default project root path." % args.project_root)
         sys.exit(1)
 
+        # check args.html_root exists and user has write access
+    htmlDir = os.path.abspath(args.html_root)
+    logger.debug("Checking if %s directory exists and is writable." % args.project_root)
+    if not os.access(htmlDir, os.W_OK):
+        logger.error("%s does not exist, or user has no write access.\n\
+Use option '--html-root' to set a non-default html root path." % htmlDir)
+        sys.exit(1)
+
     # project directories
     projectDir = os.path.join(args.project_root, args.project_name)
     dataDir = os.path.join(projectDir, "data")
     resultsDir = os.path.join(projectDir, "results")
-
+    
     # make relative project dirs
     dirs = [
         projectDir,
@@ -58,18 +70,28 @@ Use option '-r' '--project-root' to set a non-default project root path." % args
         os.path.join(dataDir, "raw"), 
         os.path.join(dataDir, "mapped"),
         resultsDir,
-        os.path.join(resultsDir, "plots")
+        os.path.join(resultsDir, "plots"),
+        htmlDir,
+        os.path.join(args.html_root, args.project_name),
+        os.path.join(args.html_root, args.project_name, "bigWig")
     ]
     for d in dirs:
         if not os.path.exists(d):
             os.makedirs(d)
+    htmlDir = os.path.join(args.html_root, args.project_name, "bigWig")
+    urlRoot = args.url_root + args.project_name + "/bigWig/"
 
     ### Paths to static files on the cluster
-    genomeFolder = "////"
+    genomeFolder = "/fhgfs/prod/ngs_resources/genomes/"
     genomeIndexes = {
-        "hg19" : os.path.join(genomeFolder, "hg19"),
-        "mm10" : os.path.join(genomeFolder, "mm10"),
-        "zf9" : os.path.join(genomeFolder, "zf9")
+        "hg19" : os.path.join(genomeFolder, "hg19/forBowtie2/hg19"),
+        "mm10" : os.path.join(genomeFolder, "mm10/forBowtie2/mm10"),
+        "zf9" : os.path.join(genomeFolder, "zf9/forBowtie2/zf9")
+    }
+    genomeSizes = {
+        "hg19" : os.path.join(genomeFolder, "hg19/hg19_chromlengths.txt"),
+        "mm10" : os.path.join(genomeFolder, "mm10/chrSizes"),
+        "zf9" : os.path.join(genomeFolder, "zf9/chrSizes")
     }
     adapterFasta = "/home/arendeiro/adapters/chipmentation.fa"
     
@@ -110,41 +132,77 @@ Use option '-r' '--project-root' to set a non-default project root path." % args
         for row in xrange(len(samples.replace(np.nan, -1)[variables])):
             if (replicate == samples.replace(np.nan, -1)[variables].ix[row]).all():
                 if sample not in biologicalReplicates:
-                    biologicalReplicates[sample] = [(row, samples.ix[row])]
+                    biologicalReplicates[sample] = [samples.ix[row]]
                 else:
-                    biologicalReplicates[sample] += [(row, samples.ix[row])]
+                    biologicalReplicates[sample] += [samples.ix[row]]
 
     # Preprocess biological replicates
     for sample in xrange(len(biologicalReplicates)):
-        # if sampleName is not provided, use a concatenation of several variable (excluding longest)
-        if "sampleName" in samples.columns and str(samples["sampleName"][biologicalReplicates[sample]][0]) != "nan":
-            sampleName = samples["sampleName"][biologicalReplicates[sample][0]]
-        else:
-            variables = samples.columns.tolist()
-            exclude = ["sampleName", "filePath", "genome", "tagmented"]
-            [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
-            sampleName = string.join([str(samples[var][biologicalReplicates[sample][0]]) for var in variables], sep="_")
-            logger.debug("No sample name provided, using concatenation of variables supplied")
+        if len(biologicalReplicates) == 0:
+            logger.error("")
+            sys.exit(1)
+
+        variables = samples.columns.tolist()
+        exclude = ["sampleName", "filePath", "genome", "tagmented"]
+        [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
+
+        # if there's only one technical replicate keep it's name if available
+        if len(biologicalReplicates.values()[sample]) == 1:
+            s = biologicalReplicates.values()[sample][0]
+            # if sampleName is not provided, use a concatenation of several variable (excluding longest)
+            if str(s["sampleName"]) != "nan":
+                sampleName = samples["sampleName"]
+            else:
+                sampleName = string.join([str(s[var]) for var in variables], sep="_")
+                logger.debug("No sample name provided, using concatenation of variables supplied")
+        # if there's more than one technical replicate get a name
+        elif len(biologicalReplicates.values()[sample]) > 1:
+            s = biologicalReplicates.values()[sample][0]
+            s["technicalReplicate"] = 0
+            sampleName = string.join([str(s[var]) for var in variables], sep="_")
 
         jobName = projectName + "_" + sampleName
 
         # check if sample is tagmented or not:
         tagmented = samples["tagmented"][sample] == "yes" or samples["tagmented"][sample] == 1
 
+        if not tagmented:
+            bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam")
+        else:
+            bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted.bam")
+
+
         # assemble commands
+        # get job header
         jobCode = slurm_header(
             jobName=jobName,
             output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
             queue=args.queue,
             time=args.time,
             cpusPerTask=args.cpus,
-            memPerCpu=args.mem
+            memPerCpu=args.mem,
+            userMail=args.user_mail
         )
-        if args.stage in ["all", "bam2fastq"]:
-            jobCode += bam2fastq(
-                inputBam=samples["filePath"][sample],
-                outputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq")
-            )
+        if args.stage in ["all"]:
+            # if more than one technical replicate, merge bams
+            if len(biologicalReplicates.values()[sample]) > 1:
+                jobCode += mergeBams(
+                    inputBams=[s["filePath"] for s in biologicalReplicates.values()[sample]],
+                    outputBam=os.path.join(dataDir, "raw", sampleName + ".bam")
+                )
+
+            # convert bam to fastq
+            if args.stage in ["all", "bam2fastq"]:
+                if len(biologicalReplicates.values()[sample]) == 1:
+                    jobCode += bam2fastq(
+                        inputBam=samples["filePath"][sample],
+                        outputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq")
+                    )
+                elif len(biologicalReplicates.values()[sample]) >= 1:
+                    jobCode += bam2fastq(
+                        inputBam=os.path.join(dataDir, "raw", sampleName + ".bam"),
+                        outputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq")
+                    )
         if args.stage in ["all", "fastqc"]:
             # TODO:
             # Fastqc should be independent from this job but since there's no option in fastqc to specify
@@ -154,7 +212,7 @@ Use option '-r' '--project-root' to set a non-default project root path." % args
                 inputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq"),
                 outputDir=os.path.join(dataDir, "fastqc")
             )
-        if args.stage in ["all", "trimAdapters"]:
+        if args.stage in ["all", "trimadapters"]:
             # TODO:
             # Change absolute path to something usable by everyone or to an option.
             jobCode += trimAdapters(
@@ -162,63 +220,68 @@ Use option '-r' '--project-root' to set a non-default project root path." % args
                 outputFastq=os.path.join(dataDir, "raw", sampleName + ".trimmed.fastq"),
                 adapters=adapterFasta
             )
-        if args.stage in ["all", "bowtie2Map"]:
+        if args.stage in ["all", "mapping"]:
+            if samples["genome"][sample] not in genomeIndexes:
+                logger.error("Sample %s has unsuported genome index: %s" % (sampleName, samples["genome"][sample]))
+                sys.exit(1)
             jobCode += bowtie2Map(
                 inputFastq=os.path.join(dataDir, "raw", sampleName + ".trimmed.fastq"),
                 outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
                 genomeIndex=genomeIndexes[samples["genome"][sample]],
                 cpus=args.cpus
             )
-        if args.stage in ["all", "shiftReads"]:
+        if args.stage in ["all", "shiftreads"]:
             if tagmented:
                 # TODO:
                 # Get correct relative path.
                 # Relative to location of *this* file rather than relative to cwd.
                 jobCode += shiftReads(
                     inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
-                    outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted.bam")
+                    outputBam=bam
                 )
-        if args.stage in ["all", "markDuplicates"]:
-            if tagmented:
-                jobCode += markDuplicates(
-                    inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted.bam"),
-                    outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted.dups.bam"),
-                    metricsFile=os.path.join(resultsDir, sampleName + ".duplicates.txt")#,
-                    #tempDir=
-                )
-            else:
-                jobCode += markDuplicates(
-                    inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
-                    outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.dups.bam"),
-                    metricsFile=os.path.join(resultsDir, sampleName + ".duplicates.txt")#,
-                    #tempDir=
-                )
-        if args.stage in ["all", "removeDuplicates"]:
-            if tagmented:
-                jobCode += removeDuplicates(
-                    inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted.dups.bam"),
-                    outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted.nodups.bam")
-                )
-            else:
-                jobCode += removeDuplicates(
-                    inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.dups.bam"),
-                    outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.nodups.bam")
-                )
-        if args.stage in ["all", "indexBam"]:
-            if tagmented:
-                jobCode += indexBam(
-                    inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted.dups.bam")
-                )
-                jobCode += indexBam(
-                    inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted.nodups.bam")
-                )
-            else:
-                jobCode += indexBam(
-                    inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.dups.bam")
-                )
-                jobCode += indexBam(
-                    inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.nodups.bam")
-                )
+        if args.stage in ["all", "markduplicates"]:
+            jobCode += markDuplicates(
+                inputBam=bam,
+                outputBam=bam + ".dups.bam",
+                metricsFile=os.path.join(resultsDir, sampleName + ".duplicates.txt")#,
+                #tempDir=
+            )
+        if args.stage in ["all", "removeduplicates"]:
+            jobCode += removeDuplicates(
+                inputBam=bam + ".dups.bam",
+                outputBam=bam + ".nodups.bam",
+            )
+        if args.stage in ["all", "indexbam"]:
+            jobCode += indexBam(
+                inputBam=bam + ".dups.bam"
+            )
+            jobCode += indexBam(
+                inputBam=bam + ".nodups.bam"
+            )
+        if args.stage in ["all", "maketracks"]:
+            jobCode += bamToUCSC(
+                inputBam=bam + ".dups.bam",
+                outputBigWig=os.path.join(htmlDir, sampleName + ".bigWig"),
+                genomeSizes=genomeSizes[samples["genome"][sample]],
+                tagmented=False
+            )
+            jobCode += addTrackToHub(
+                sampleName=sampleName,
+                trackURL=urlRoot + sampleName + ".bigWig",
+                trackHub=os.path.join(htmlDir, "trackHub.txt")
+            )
+            jobCode += bamToUCSC(
+                inputBam=bam + ".dups.bam",
+                outputBigWig=os.path.join(htmlDir, sampleName + ".5prime.bigWig"),
+                genomeSizes=genomeSizes[samples["genome"][sample]],
+                tagmented=True
+            )
+            jobCode += addTrackToHub(
+                sampleName=sampleName,
+                trackURL=urlRoot + sampleName + ".5prime.bigWig",
+                trackHub=os.path.join(htmlDir, "trackHub.txt")
+            )
+
         # if args.stage in ["all", "qc"]:
         #     if tagmented:
         #         jobCode += qc()
@@ -244,17 +307,18 @@ Use option '-r' '--project-root' to set a non-default project root path." % args
         logger.debug("Project '%s'submission finished successfully." % args.project_name)
 
 
-    ### if there are samples that are replicates, merge them
-    # Check if there are replicates
-
-    # merge either technical or biological replicates
-
-    # always merge technical before biological - keep all files
-
-
     #### FURTHER TO IMPLEMENT
 
     # Call peaks
+    # if args.stage in ["all", "callPeaks"]:
+    #     jobCode += macs2CallPeaks(
+    #         inputBam=os.path.join(
+    #         treatmentBam=bam + "dups.bam",
+    #         controlBam=,
+    #         outputDir=,
+    #         sampleName=,
+    #         broad=False
+    #     )
 
     # (Get consensus peaks) or call peaks on merged samples
 
@@ -275,7 +339,7 @@ Use option '-r' '--project-root' to set a non-default project root path." % args
     logger.debug("Copied log file to project directory '%s'" % os.path.join(projectDir, "runs"))
 
 
-def slurm_header(jobName, output, queue="shortq", ntasks=1, time="10:00:00", cpusPerTask=16, memPerCpu=2000, nodes=1):
+def slurm_header(jobName, output, queue="shortq", ntasks=1, time="10:00:00", cpusPerTask=16, memPerCpu=2000, nodes=1, userMail=""):
     command = """    #!/bin/bash
     #SBATCH --partition={0}
     #SBATCH --ntasks={1}
@@ -288,11 +352,14 @@ def slurm_header(jobName, output, queue="shortq", ntasks=1, time="10:00:00", cpu
     #SBATCH --job-name={6}
     #SBATCH --output={7}
 
+    #SBATCH --mail-type=fail,end
+    #SBATCH --mail-user={8}
+
     # Start running the job
     hostname
     date
 
-    """.format(queue, ntasks, time, cpusPerTask, memPerCpu, nodes, jobName, output)
+    """.format(queue, ntasks, time, cpusPerTask, memPerCpu, nodes, jobName, output, userMail)
 
     return command
 
@@ -313,14 +380,14 @@ def slurm_submit_job(jobFile):
     return os.system(command)
 
 
-def mergeBams(outputBam, *inputBams):
+def mergeBams(inputBams, outputBam):
     command = """
     # Merging bam files from replicates
     module load samtools
 
     samtools merge {0} {1}
 
-    """.format(outputBam, (" ".join(["%d"] * len(inputBams))) % tuple(inputBams))
+    """.format(outputBam, (" ".join(["%s"] * len(inputBams))) % tuple(inputBams))
 
     return command
 
@@ -394,7 +461,7 @@ def shiftReads(inputBam, outputBam):
     samtools view -S -b - | \\
     samtools sort - {2}
     
-    """.format(inputBam, os.path.abspath(os.path.curdir), outputBam)
+    """.format(inputBam, os.path.abspath(os.path.dirname(os.path.realpath(__file__))), outputBam)
 
     return command
     
@@ -444,6 +511,7 @@ def indexBam(inputBam):
     samtools index {0}
 
     """.format(inputBam)
+
     return command
 
 
@@ -458,12 +526,76 @@ def qc():
     raise NotImplemented
 
 
-def bamToUCSC(inputBam):
-    raise NotImplemented
+def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
+    transientFile = os.path.abspath(re.sub("\.bigWig" , "", outputBigWig))
+    if not tagmented:
+        command = """
+    # make bigWig tracks from bam file
+    module load 
+
+    bamToBed -i {0} | \\
+    genomeCoverageBed -i stdin -bg -g {1} > {2}.cov
+
+    bedGraphToBigWig {2}.cov {1} {3}
+
+    # remove cov file
+    if [[ -s {2}.cov ]]
+        then
+        rm {2}.cov
+    fi
+
+    """.format(inputBam, genomeSizes, transientFile, outputBigWig)
+    else:
+        command = """
+    # make bigWig tracks from bam file
+    module load 
+
+    bamToBed -i {0} | \\
+    python {4}/lib/get5primePosition.py | \\
+    genomeCoverageBed -i stdin -bg -g {1} > {2}.cov
+
+    bedGraphToBigWig {2}.cov {1} {3}
+
+    # remove cov file
+    if [[ -s {2}.cov ]]
+        then
+        rm {2}.cov
+    fi
+
+    """.format(inputBam, genomeSizes, transientFile, outputBigWig, os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
+
+    return command
 
 
-def macs2CallPeaks(treatmentBam, controlBam, outputDir, noModel=False, broad=False):
-    raise NotImplemented
+def addTrackToHub(sampleName, trackURL, trackHub):
+    command = """
+    echo 'track type=bigWig name="{0}" description="{0}" visibility=3 bigDataUrl={1}' >> {2}
+    """.format(sampleName, trackURL, trackHub)
+
+    return command
+
+
+def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, broad=False):
+    if not broad:
+        command = """
+    # call peaks with MACS2
+
+    macs2 callpeak -t {0} -c {1} \\
+    --bw 200 \\
+    -g hs -n {2} --outdir {3}
+
+    """.format(treatmentBam, controlBam, sampleName, outputDir)
+    else:
+        command = """
+    # call peaks with MACS2
+        
+    macs2 callpeak -B -t {0} -c {1} \\
+    --broad --nomodel --extsize 200 --pvalue 1e-3 \\
+    -g hs -n {2} --outdir {3}
+
+    """.format(treatmentBam, controlBam, sampleName, outputDir)
+
+    return command
 
 
 def sppCallPeaks(treatmentBam, controlBam, outputDir, broad=False):
@@ -509,10 +641,10 @@ if __name__ == '__main__':
     # optional arguments
     parser.add_argument('-r', '--project-root', default="/fhgfs/groups/lab_bock/shared/projects/",
                         dest='project_root', type=str,
-                        help='Specify the directory in which the project will reside. Default /fhgfs/groups/lab_bock/shared/projects/.')
+                        help='Directory in which the project will reside. Default=/fhgfs/groups/lab_bock/shared/projects/.')
     parser.add_argument('-s', '--stage', default="all", dest='stage',
                         choices=["all", "bam2fastq", "fastqc", "trimming", "mapping",
-                                 "shifting", "markduplicates", "removeduplicates", "qc", "mergereplicates"],
+                                 "shiftreads", "markduplicates", "removeduplicates", "indexbam", "qc", "maketracks", "mergereplicates"],
                         help='Run only these stages. Default=all.', type=str)
     parser.add_argument('-c', '--cpus', default=16, dest='cpus',
                         help='Number of CPUs to use. Default=16.', type=int)
@@ -523,6 +655,14 @@ if __name__ == '__main__':
                         help='Queue to submit jobs to. Default=shortq', type=str)
     parser.add_argument('-t', '--time', default="10:00:00", dest='time',
                         help='Maximum time for jobs to run. Default=10:00:00', type=str)
+    parser.add_argument('--user-mail', default="", dest='user_mail',
+                        help='User mail address. Default=<submitting user>.', type=str)
+    parser.add_argument('--html-root', default="/fhgfs/groups/lab_bock/public_html/",
+                        dest='html_root', type=str,
+                        help='public_html directory in which bigwig files for the project will reside. Default=/fhgfs/groups/lab_bock/public_html/.')
+    parser.add_argument('--url-root', default="http://www.biomedical-sequencing.at/bocklab/",
+                        dest='url_root', type=str,
+                        help='Url mapping to public_html directory where bigwig files for the project will be accessed. Default=http://www.biomedical-sequencing.at/bocklab/.')
     parser.add_argument('-l', '--log-level', default="INFO", dest='log_level',
                         choices=["DEBUG", "INFO", "ERROR"], help='Logging level. Default=INFO.', type=str)
     # parse

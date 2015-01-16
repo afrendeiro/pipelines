@@ -10,6 +10,30 @@ TODO:
 
     (maybe) implement way to check if slurm job is finished and then run 2nd part if there were no errors
 
+
+    #### FURTHER TO IMPLEMENT
+
+    # Call peaks
+    # if args.stage in ["all", "callPeaks"]:
+    #     jobCode += macs2CallPeaks(
+    #         inputBam=os.path.join(
+    #         treatmentBam=bam + "dups.bam",
+    #         controlBam=,
+    #         outputDir=,
+    #         sampleName=,
+    #         broad=False
+    #     )
+
+    # (Get consensus peaks) or call peaks on merged samples
+
+    # Motif discovery
+
+    # Center peaks on motifs
+
+    # Annotate peaks (various annotations + pwm of motif)
+
+    # Call footprints
+
 """
 
 from argparse import ArgumentParser
@@ -172,10 +196,11 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
         else:
             bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted")
 
+        tempFiles = list()
 
         # assemble commands
         # get job header
-        jobCode = slurm_header(
+        jobCode = slurmHeader(
             jobName=jobName,
             output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
             queue=args.queue,
@@ -204,6 +229,7 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
                         inputBam=os.path.join(dataDir, "raw", sampleName + ".bam"),
                         outputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq")
                     )
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".fastq"))
         if args.stage in ["all", "fastqc"]:
             # TODO:
             # Fastqc should be independent from this job but since there's no option in fastqc to specify
@@ -221,6 +247,7 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
                 outputFastq=os.path.join(dataDir, "raw", sampleName + ".trimmed.fastq"),
                 adapters=adapterFasta
             )
+            tempFiles.append(os.path.join(dataDir, "raw", sampleName + ".trimmed.fastq"))
         if args.stage in ["all", "mapping"]:
             if samples["genome"][sample] not in genomeIndexes:
                 logger.error("Sample %s has unsuported genome index: %s" % (sampleName, samples["genome"][sample]))
@@ -231,6 +258,7 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
                 genomeIndex=genomeIndexes[samples["genome"][sample]],
                 cpus=args.cpus
             )
+            tempFiles.append(os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"))
         if args.stage in ["all", "shiftreads"]:
             if tagmented:
                 # TODO:
@@ -261,6 +289,7 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
                 inputBam=bam + ".nodups.bam"
             )
         if args.stage in ["all", "maketracks"]:
+            # right now tracks are only made for bams with duplicates
             jobCode += bamToUCSC(
                 inputBam=bam + ".dups.bam",
                 outputBigWig=os.path.join(htmlDir, sampleName + ".bigWig"),
@@ -290,9 +319,16 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
         #     else:
         #         jobCode += qc()
 
+        # Remove intermediary files
+        if args.stage == "all" and not args.keep_tmp:
+            logger.debug("Removing intermediary files")
+            for fileName in tempFiles:
+                jobCode += removeFile(fileName)
+
+
         ### Submit job to slurm
         # Get concatenated string with code from all modules
-        jobCode += slurm_footer()
+        jobCode += slurmFooter()
 
         # Output file name
         jobFile = os.path.join(projectDir, "runs", jobName + ".sh")
@@ -303,37 +339,12 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
         # Submit to slurm
         if not args.dry_run:
             logger.info("Submitting jobs to slurm")
-            status = slurm_submit_job(jobFile)
+            status = slurmSubmitJob(jobFile)
 
             if status != 0:
                 logger.error("Slurm job '%s' not successfull" % jobFile)
                 sys.exit(1)
             logger.debug("Project '%s'submission finished successfully." % args.project_name)
-
-
-    #### FURTHER TO IMPLEMENT
-
-    # Call peaks
-    # if args.stage in ["all", "callPeaks"]:
-    #     jobCode += macs2CallPeaks(
-    #         inputBam=os.path.join(
-    #         treatmentBam=bam + "dups.bam",
-    #         controlBam=,
-    #         outputDir=,
-    #         sampleName=,
-    #         broad=False
-    #     )
-
-    # (Get consensus peaks) or call peaks on merged samples
-
-    # Motif discovery
-
-    # Center peaks on motifs
-
-    # Annotate peaks (various annotations + pwm of motif)
-
-    # Call footprints
-    
 
     #### Copy log to projectDir
     shutil.copy2(
@@ -343,7 +354,7 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
     logger.debug("Copied log file to project directory '%s'" % os.path.join(projectDir, "runs"))
 
 
-def slurm_header(jobName, output, queue="shortq", ntasks=1, time="10:00:00", cpusPerTask=16, memPerCpu=2000, nodes=1, userMail=""):
+def slurmHeader(jobName, output, queue="shortq", ntasks=1, time="10:00:00", cpusPerTask=16, memPerCpu=2000, nodes=1, userMail=""):
     command = """    #!/bin/bash
     #SBATCH --partition={0}
     #SBATCH --ntasks={1}
@@ -368,7 +379,7 @@ def slurm_header(jobName, output, queue="shortq", ntasks=1, time="10:00:00", cpu
     return command
 
 
-def slurm_footer():
+def slurmFooter():
     command = """
     # Job end
     date
@@ -378,10 +389,20 @@ def slurm_footer():
     return command
 
 
-def slurm_submit_job(jobFile):
+def slurmSubmitJob(jobFile):
     command = "sbatch %s" % jobFile
 
     return os.system(command)
+
+
+def removeFile(fileName):
+    command = """
+    # Removing file
+
+    rm {0}
+    """.format(fileName)
+
+    return command
 
 
 def mergeBams(inputBams, outputBam):
@@ -477,7 +498,7 @@ def shiftReads(inputBam, outputBam):
     
 
 def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
-    transientFile = re.sub("\.bam$" , "", outputBam)
+    transientFile = re.sub("\.bam$" , "", outputBam) + ".dups.nosort.bam"
     outputBam = re.sub("\.bam$" , "", outputBam)
     command = """
     # Marking duplicates with piccard
@@ -494,9 +515,9 @@ def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
     # Sort bam file with marked duplicates
     samtools sort {1} {4}
 
-    if [[ -s {4}.bam ]]
+    if [[ -s {1} ]]
         then
-        rm {4}.bam
+        rm {1}
     fi
     
     """.format(inputBam, transientFile, metricsFile, tempDir, outputBam)
@@ -690,6 +711,8 @@ if __name__ == '__main__':
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help='Logging level. Default=INFO.', type=str)
     parser.add_argument('--dry-run', dest='dry_run', action='store_true', 
                         help='Dry run. Assemble commands, but do not submit jobs to slurm. Default=False.')
+    parser.add_argument('--keep-tmp-files', dest='keep_tmp', action='store_true', 
+                        help='Keep intermediary files. If not it will only preserve final files. Default=False.')
     # parse
     args = parser.parse_args()
 
@@ -714,6 +737,7 @@ if __name__ == '__main__':
     formatter = logging.Formatter(fmt='%(levelname)s: %(asctime)s - %(message)s', datefmt='%Y/%m/%d %H:%M:%S')
     stdout.setFormatter(formatter)
     logger.addHandler(stdout)
+
 
     ### Start main function
     main(args, logger)

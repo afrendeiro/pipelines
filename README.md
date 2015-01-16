@@ -7,7 +7,6 @@ Tasks include raw sequencing quality control, adapter removal, read trimming, ma
 
 
 # Instalation
-## Python and dependencies
 I recommend creating a virtual environment to install dependencies to running the pipeline.
 
 First, make sure you work with python 2.7 or higher:

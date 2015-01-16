@@ -566,9 +566,9 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
         command = """
     # making bigWig tracks from bam file
     echo "making bigWig tracks from bam file"
-    module load 
+    module load bedtools
 
-    bamToBed -i {0} | \\
+    bedtools bamtobed -i {0} | \\
     genomeCoverageBed -i stdin -bg -g {1} > {2}.cov
 
     bedGraphToBigWig {2}.cov {1} {3}

@@ -1,6 +1,6 @@
-sampleName,ip,cellLine,numberCells,technique,patient,experimentName,biologicalReplicate,technicalReplicate,filePath,genome,tagmented
-qwe,H3K4me3,K562,50000,ChIP,,CM_15_2,1,1,/data/runs,hg19,yes
-,H3K4me3,K562,50000,ChIP,,CM_15_3,1,2,/data/runs,hg19,yes
-,H3K4me3,K562,50000,ChIP,,CM_16_1,2,1,/data/runs,hg19,yes
-,H3K27me3,K562,50000,ChIP,,CM_15_2,1,1,/data/runs,hg19,yes
-,H3K27me3,K562,50000,ChIP,,CM_15_3,1,2,/data/runs,hg19,
+"sampleName","ip","cellLine","numberCells","technique","patient","experimentName","biologicalReplicate","technicalReplicate","filePath","genome","tagmented"
+"qwe","H3K4me3","K562",50000,"ChIP",,"CM_15_2",1,1,"/data/runs","hg19","yes"
+,"H3K4me3","K562",50000,"ChIP",,"CM_15_3",1,2,"/data/runs","hg19","yes"
+,"H3K4me3","K562",50000,"ChIP",,"CM_16_1",2,1,"/data/runs","hg19","yes"
+,"H3K27me3","K562",50000,"ChIP",,"CM_15_2",1,1,"/data/runs","hg19","yes"
+,"H3K27me3","K562",50000,"ChIP",,"CM_15_3",1,2,"/data/runs","hg19",

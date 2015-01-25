@@ -4,8 +4,6 @@
 ChIP-seq pipeline 
 
     #### FURTHER TO IMPLEMENT
-    # Center peaks on motifs
-    # Annotate peaks (various annotations + pwm of motif)
     # Call footprints
 
 """
@@ -430,16 +428,16 @@ def comparison(args, logger):
         tempFiles = list()
 
         # assemble commands
+        jobCode = slurmHeader(
+            jobName=jobName,
+            output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
+            queue=args.queue,
+            time=args.time,
+            cpusPerTask=args.cpus,
+            memPerCpu=args.mem,
+            userMail=args.user_mail
+        )
         if args.stage in ["all", "callpeaks"] and control:
-            jobCode = slurmHeader(
-                jobName=jobName,
-                output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
-                queue=args.queue,
-                time=args.time,
-                cpusPerTask=args.cpus,
-                memPerCpu=args.mem,
-                userMail=args.user_mail
-            )
             if args.peak_caller == "macs2":
                 # make dir for output
                 if not os.path.exists(os.path.join(dataDir, "peaks", sampleName)):
@@ -471,21 +469,53 @@ def comparison(args, logger):
                     cpus=args.cpus
                 )
 
-        if args.stage in ["all", "callpeaks"] and control:
+        if args.stage in ["all", "findmotifs"] and control:
             if not os.path.exists(os.path.join(dataDir, "motifs", sampleName)):
                     os.makedirs(os.path.join(dataDir, "motifs", sampleName))
 
             jobCode += homerFindMotifs(
-                    peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + ".narrowPeak"),
-                    genome="hg19",
+                    peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
+                    genome=samples["genome"][sample],
                     outputDir=os.path.join(dataDir, "motifs", sampleName),
-                    size=150,
+                    size="150",
                     length="8,10,12"
                 )
+        
+        if args.stage in ["all", "centerpeaks"] and control:
+            ### TODO:
+            # right now this assumes peaks were called with MACS2
+            # figure a way of magetting the peak files withough using the peak_caller option
+            # for that would imply taht option would be required when selecting this stage
+            jobCode += centerPeaksOnMotifs(
+                peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
+                genome=samples["genome"][sample],
+                windowWidth=args.peak_window_width,
+                motifFile=os.path.join(dataDir, "motifs", sampleName, "homerResults", "motif1.motif"),
+                outputBed=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifCentered.bed")
+            )
 
-            jobCode += slurmFooter()
-            jobs[jobName] = jobCode
-    
+        if args.stage in ["all", "annotatepeaks"] and control:
+            ### TODO:
+            # right now this assumes peaks were called with MACS2
+            # figure a way of magetting the peak files withough using the peak_caller option
+            # for that would imply taht option would be required when selecting this stage
+            jobCode += AnnotatePeaks(
+                peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
+                genome=samples["genome"][sample],
+                motifFile=os.path.join(dataDir, "motifs", sampleName, "homerResults", "motif1.motif"),
+                outputBed=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifAnnotated.bed")
+            )
+
+        if args.stage in ["all", "footprints"] and control:
+            jobCode += footprintAnalysis(
+                os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifCentered.bed"),
+                os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifAnnotated.bed")
+            )
+
+        # finish job
+        jobCode += slurmFooter()
+        jobs[jobName] = jobCode
+
     # Submit job for all samples together
     if args.stage in ["all", "correlations"]:
         # TODO:
@@ -502,8 +532,8 @@ def comparison(args, logger):
         jobCode += plotCorrelations(
             inputBams=list(samples['filePath']),
             plotsDir=os.path.join(resultsDir, 'plots'),
-            duplicates=False,
-            windowWidth=1000,
+            duplicates=args.duplicates,
+            windowWidth=args.genome_window_width,
             fragmentSize=50,
             genome="hg19"
         )
@@ -873,15 +903,33 @@ def homerFindMotifs(peakFile, genome, outputDir, size=150, length="8,10,12"):
     return command
 
 
-def AnnotatePeaks():
-    raise NotImplemented
+def AnnotatePeaks(peakFile, genome, motifFile, outputBed):
+    command = """
+    # annotate peaks with motif score
+    echo "annotating peaks with motif score"
+
+    annotatePeaks.pl {0} {1} -mask -mscore -m {2} | \\
+    tail -n +2 | cut -f 1,5,22  > {3}
+    """.format(peakFile, genome, motifFile, outputBed)
+
+    return command
 
 
-def centerPeaksOnMotifs():
-    raise NotImplemented
+def centerPeaksOnMotifs(peakFile, genome, windowWidth, motifFile, outputBed):
+    command = """
+    # center peaks on motif
+    echo "centering peaks on motif"
+
+    annotatePeaks.pl {0} {1} -size {2} -center {3} | \\
+    awk -v OFS='\t' '{print $2, $3, $4, $1, $6, $5}' | \\
+    python {4}/lib/fix_bedfile_genome_boundaries.py | \\
+    sortBed > {5}
+    """.format(peakFile, genome, windowWidth, motifFile, os.path.abspath(os.path.dirname(os.path.realpath(__file__))), outputBed)
+
+    return command
 
 
-def callFootprints():
+def footprintAnalysis():
     raise NotImplemented
 
 
@@ -889,8 +937,7 @@ def callFootprints():
 if __name__ == '__main__':
     ### Parse command-line arguments
     parser = ArgumentParser(
-        description = 'ChIP-seq pipeline',
-        usage       = 'python chipseq_pipeline.py [preprocess, comparison]'
+        description = 'ChIP-seq pipeline.'
     )
 
     ### Global options
@@ -938,10 +985,16 @@ if __name__ == '__main__':
     comparison_subparser.add_argument(dest='project_name', help="Project name.", type=str)
     comparison_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
     comparison_subparser.add_argument('-s', '--stage', default="all", dest='stage',
-                        choices=["all", "callpeaks", "correlations"],
+                        choices=["all", "callpeaks", "findmotifs", "correlations"],
                         help='Run only these stages. Default=all.', type=str)
     comparison_subparser.add_argument('--peak-caller', default="macs2", choices=["macs2", "spp"],
                         dest='peak_caller', help='Peak caller to use. Default=macs2.', type=str)
+    comparison_subparser.add_argument('--peak-window-width', default=2000,
+                        dest='peak_window_width', help='Width of window around peak motifs. Default=2000.', type=int)
+    comparison_subparser.add_argument('--duplicates', dest='duplicates', action='store_true', 
+                        help='Allow duplicates in coorelation analysis. Default=False.')
+    comparison_subparser.add_argument('--genome-window-width', default=1000,
+                        dest='genome_window_width', help='Width of window to make genome-wide correlations. Default=1000.', type=int)
 
     # parse
     args = parser.parse_args()

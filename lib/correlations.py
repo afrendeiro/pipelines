@@ -1,18 +1,20 @@
 #!/usr/env python
 
+from argparse import ArgumentParser
 import os, re
 from pybedtools import BedTool
 import HTSeq
 import numpy as np
 import pandas as pd
+import string
 
 import rpy2.robjects as robj # for ggplot in R
 import rpy2.robjects.pandas2ri # for R dataframe conversion
 
 
-def makeWindows(windowWidth):
+def makeWindows(windowWidth, genome):
     """Generate 1kb windows genome-wide."""
-    w = BedTool.window_maker(BedTool(), genome="hg19", w=windowWidth)
+    w = BedTool.window_maker(BedTool(), genome=genome, w=windowWidth)
     windows = dict()
     for interval in w:
         feature = HTSeq.GenomicInterval(
@@ -81,11 +83,11 @@ def main(args):
 
     # Get sample names
     names = list()
-    for bam in bamfiles:
+    for bam in args.bamfiles:
         names.append(re.sub(os.path.basename(bam), "\.bam", ""))
 
     # Get genome-wide windows
-    windows = makeWindows(args.windowWidth)
+    windows = makeWindows(args.window_width, args.genome)
 
     # Loop through all signals, compute coverage in bed regions, append to dict
     rawSignals = dict()
@@ -100,9 +102,9 @@ def main(args):
     # Normalize to library size 
     dfNorm = df.apply(lambda x: np.log2( 1 + (x / x.sum()) * 1000000))
 
-    # extract variables pairwisely
+    # pick samples pairwisely
     for sample1, sample2 in itertools.combinations(dfNorm.columns, 2):
-        # extract two variables
+        # pick two samples
         d = dfNorm[[sample1, sample2]]
         # convert the pandas dataframe to an R dataframe
         robj.pandas2ri.activate()
@@ -115,19 +117,19 @@ if __name__ == '__main__':
     ### Parse command-line arguments
     parser = ArgumentParser(
         description = 'correlations.py',
-        usage       = 'python correlations.py <directory> file1, file2... '
+        usage       = 'python correlations.py [options] <directory> file1 [file2 ... fileN]'
     )
-
-    parser.add_argument('bamfiles', nargs = '*', help = 'bamFiles')
 
     ### Global options
     # positional arguments
-    # optional arguments
     parser.add_argument(dest='plots_dir', type=str, help='Directory to save plots to.')
-    parser.add_argument('--duplicates', dest='duplicates', type=bool, action='store_true')
+    parser.add_argument('bamfiles', nargs = '*', help = 'bamFiles')
+    # optional arguments
+    parser.add_argument('--duplicates', dest='duplicates', action='store_true')
     parser.add_argument('--window-width', dest='window_width', type=int, default=1000)
     parser.add_argument('--fragment-size', dest='fragment_size', type=int, default=50)
     parser.add_argument('--genome', dest='genome', type=str, default='hg19')
-    parser.add_argument('bamfiles', nargs = '*', help = 'bamFiles')
+
+    args = parser.parse_args()
 
     main(args)

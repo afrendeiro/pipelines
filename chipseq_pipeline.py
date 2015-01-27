@@ -2,6 +2,10 @@
 
 """
 ChIP-seq pipeline 
+    
+    #### BUGS
+    Info "exiting" after copying log
+    Copy original sample annotation file to projectDir
 
     #### FURTHER TO IMPLEMENT
     # Call footprints
@@ -246,16 +250,16 @@ def preprocess(args, logger):
             # Change absolute path to something usable by everyone or to an option.
             jobCode += trimAdapters(
                 inputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq"),
-                outputFastq=os.path.join(dataDir, "raw", sampleName + ".trimmed.fastq"),
+                outputFastq=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
                 adapters=adapterFasta
             )
-            tempFiles.append(os.path.join(dataDir, "raw", sampleName + ".trimmed.fastq"))
+            tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"))
         if args.stage in ["all", "mapping"]:
             if samples["genome"][sample] not in genomeIndexes:
                 logger.error("Sample %s has unsuported genome index: %s" % (sampleName, samples["genome"][sample]))
                 sys.exit(1)
             jobCode += bowtie2Map(
-                inputFastq=os.path.join(dataDir, "raw", sampleName + ".trimmed.fastq"),
+                inputFastq=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
                 outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
                 genomeIndex=genomeIndexes[samples["genome"][sample]],
                 cpus=args.cpus
@@ -314,6 +318,13 @@ def preprocess(args, logger):
                 trackURL=urlRoot + sampleName + ".5prime.bigWig",
                 trackHub=os.path.join(htmlDir, "trackHub.txt")
             )
+            # TODO: separate this per genome
+            linkToTrackHub(
+                trackHubURL="{0}/{1}/bigWig/trackHub.txt".format(args.url_root, args.project_name),
+                fileName=os.path.join(projectDir, "ucsc_tracks.html"),
+                genome='human'
+            )
+            
         # if args.stage in ["all", "qc"]:
         #     if tagmented:
         #         jobCode += qc()
@@ -839,6 +850,19 @@ def addTrackToHub(sampleName, trackURL, trackHub):
     """.format(sampleName, trackURL, trackHub)
 
     return command
+
+
+def linkToTrackHub(trackHubURL, fileName, genome):
+    html = """
+    <html>
+        <head>
+            <meta http-equiv="refresh" content="0; url=http://genome.ucsc.edu/cgi-bin/hgTracks?org={genome}&hgt.customText={trackHubURL}" />
+        </head>
+    </html>
+    """.format(trackHubURL=trackHubURL, fileName=fileName, genome=genome)
+    
+    with open(fileName, 'w') as handle:
+        handle.write(html)
 
 
 def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, broad=False):

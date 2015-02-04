@@ -5,10 +5,16 @@ ChIP-seq pipeline
     
     #### BUGS
     Info "exiting" after copying log
-    Copy original sample annotation file to projectDir
+    chmod 755 parent bigWig folder
+
+    UCSC link for mouse is: http://genome.ucsc.edu/cgi-bin/hgTracks?db=mm10&hgt.customText=
+
+    UCSC track description 5prime add 5prime
 
     #### FURTHER TO IMPLEMENT
-    # Call footprints
+    call footprints
+    copy original sample annotation file to projectDir
+    merge biological replicates, process again
 
 """
 
@@ -35,6 +41,106 @@ __version__ = "0.1"
 __maintainer__ = "Andre Rendeiro"
 __email__ = "arendeiro@cemm.oeaw.ac.at"
 __status__ = "Development"
+
+
+def main():
+    ### Parse command-line arguments
+    parser = ArgumentParser(
+        description = 'ChIP-seq pipeline.'
+    )
+
+    ### Global options
+    # positional arguments
+    # optional arguments
+    parser.add_argument('-r', '--project-root', default="/fhgfs/groups/lab_bock/shared/projects/",
+                        dest='project_root', type=str,
+                        help='Directory in which the project will reside. Default=/fhgfs/groups/lab_bock/shared/projects/.')
+    parser.add_argument('--html-root', default="/fhgfs/groups/lab_bock/public_html/arendeiro/",
+                        dest='html_root', type=str,
+                        help='public_html directory in which bigwig files for the project will reside. Default=/fhgfs/groups/lab_bock/public_html/.')
+    parser.add_argument('--url-root', default="http://www.biomedical-sequencing.at/bocklab/arendeiro/",
+                        dest='url_root', type=str,
+                        help='Url mapping to public_html directory where bigwig files for the project will be accessed. Default=http://www.biomedical-sequencing.at/bocklab.')
+    parser.add_argument('--keep-tmp-files', dest='keep_tmp', action='store_true', 
+                        help='Keep intermediary files. If not it will only preserve final files. Default=False.') 
+    parser.add_argument('-c', '--cpus', default=16, dest='cpus',
+                        help='Number of CPUs to use. Default=16.', type=int)
+    parser.add_argument('-m', '--mem-per-cpu', default=2000, dest='mem',
+                        help='Memory per CPU to use. Default=2000.', type=int)
+    parser.add_argument('-q', '--queue', default="shortq", dest='queue',
+                        choices=["develop", "shortq", "mediumq", "longq"],
+                        help='Queue to submit jobs to. Default=shortq', type=str)
+    parser.add_argument('-t', '--time', default="10:00:00", dest='time',
+                        help='Maximum time for jobs to run. Default=10:00:00', type=str)
+    parser.add_argument('--user-mail', default="", dest='user_mail',
+                        help='User mail address. Default=<submitting user>.', type=str)
+    parser.add_argument('-l', '--log-level', default="INFO", dest='log_level',
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help='Logging level. Default=INFO.', type=str)
+    parser.add_argument('--dry-run', dest='dry_run', action='store_true', 
+                        help='Dry run. Assemble commands, but do not submit jobs to slurm. Default=False.')
+
+    ### Sub commands
+    subparser = parser.add_subparsers(title='sub-command', dest="command")
+    # preprocess
+    preprocess_subparser = subparser.add_parser("preprocess")
+    preprocess_subparser.add_argument(dest='project_name', help="Project name.", type=str)
+    preprocess_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
+    preprocess_subparser.add_argument('-s', '--stage', default="all", dest='stage',
+                        choices=["all", "bam2fastq", "fastqc", "trimming", "mapping",
+                                 "shiftreads", "markduplicates", "removeduplicates", "indexbam", "qc", "maketracks", "mergereplicates"],
+                        help='Run only these stages. Default=all.', type=str)   
+    #comparison
+    comparison_subparser = subparser.add_parser("comparison")
+    comparison_subparser.add_argument(dest='project_name', help="Project name.", type=str)
+    comparison_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
+    comparison_subparser.add_argument('-s', '--stage', default="all", dest='stage',
+                        choices=["all", "callpeaks", "findmotifs", "correlations"],
+                        help='Run only these stages. Default=all.', type=str)
+    comparison_subparser.add_argument('--peak-caller', default="macs2", choices=["macs2", "spp"],
+                        dest='peak_caller', help='Peak caller to use. Default=macs2.', type=str)
+    comparison_subparser.add_argument('--peak-window-width', default=2000,
+                        dest='peak_window_width', help='Width of window around peak motifs. Default=2000.', type=int)
+    comparison_subparser.add_argument('--duplicates', dest='duplicates', action='store_true', 
+                        help='Allow duplicates in coorelation analysis. Default=False.')
+    comparison_subparser.add_argument('--genome-window-width', default=1000,
+                        dest='genome_window_width', help='Width of window to make genome-wide correlations. Default=1000.', type=int)
+
+    # parse
+    args = parser.parse_args()
+
+
+    ### Logging
+    logger = logging.getLogger(__name__)
+    levels = {"DEBUG" : logging.DEBUG, "INFO" : logging.INFO, 'WARNING': logging.WARNING, "ERROR" : logging.ERROR, "CRITICAL" : logging.CRITICAL}
+    logger.setLevel(levels[args.log_level])
+
+    # create a file handler
+    # (for now in current working dir, in the end copy log to projectDir)
+    handler = logging.FileHandler(os.path.join(os.getcwd(), args.project_name + ".log"))
+    handler.setLevel(logging.INFO)
+    # format logger
+    formatter = logging.Formatter(fmt='%(levelname)s: %(asctime)s - %(message)s', datefmt='%Y/%m/%d %H:%M:%S')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    # create a stout handler
+    stdout = logging.StreamHandler(sys.stdout)
+    stdout.setLevel(logging.ERROR)
+    formatter = logging.Formatter(fmt='%(levelname)s: %(asctime)s - %(message)s', datefmt='%Y/%m/%d %H:%M:%S')
+    stdout.setFormatter(formatter)
+    logger.addHandler(stdout)
+
+
+    ### Start main function
+    if args.command == "preprocess":
+        preprocess(args, logger)
+    elif args.command == "comparison":
+        comparison(args, logger)
+
+
+    ### Exit
+    logger.info("Finished and exiting.")
+    sys.exit(0)
 
 
 def checkProjectDirs(args, logger):
@@ -122,12 +228,12 @@ def preprocess(args, logger):
     genomeIndexes = {
         "hg19" : os.path.join(genomeFolder, "hg19/forBowtie2/hg19"),
         "mm10" : os.path.join(genomeFolder, "mm10/forBowtie2/mm10"),
-        "zf9" : os.path.join(genomeFolder, "zf9/forBowtie2/zf9")
+        "dr7" : os.path.join(genomeFolder, "dr7/forBowtie2/dr7")
     }
     genomeSizes = {
         "hg19" : os.path.join(genomeFolder, "hg19/hg19_chromlengths.txt"),
-        "mm10" : os.path.join(genomeFolder, "mm10/chrSizes"),
-        "zf9" : os.path.join(genomeFolder, "zf9/chrSizes")
+        "mm10" : "/home/arendeiro/mm10.chrom.sizes",
+        "dr7" : "/home/arendeiro/danRer7.chrom.sizes"
     }
     adapterFasta = "/home/arendeiro/adapters/chipmentation.fa"
     
@@ -307,24 +413,25 @@ def preprocess(args, logger):
                 trackURL=urlRoot + sampleName + ".bigWig",
                 trackHub=os.path.join(htmlDir, "trackHub.txt")
             )
-            jobCode += bamToUCSC(
-                inputBam=bam + ".dups.bam",
-                outputBigWig=os.path.join(htmlDir, sampleName + ".5prime.bigWig"),
-                genomeSizes=genomeSizes[samples["genome"][sample]],
-                tagmented=True
-            )
-            jobCode += addTrackToHub(
-                sampleName=sampleName,
-                trackURL=urlRoot + sampleName + ".5prime.bigWig",
-                trackHub=os.path.join(htmlDir, "trackHub.txt")
-            )
+            if tagmented:
+                jobCode += bamToUCSC(
+                    inputBam=bam + ".dups.bam",
+                    outputBigWig=os.path.join(htmlDir, sampleName + ".5prime.bigWig"),
+                    genomeSizes=genomeSizes[samples["genome"][sample]],
+                    tagmented=True
+                )
+                jobCode += addTrackToHub(
+                    sampleName=sampleName,
+                    trackURL=urlRoot + sampleName + ".5prime.bigWig",
+                    trackHub=os.path.join(htmlDir, "trackHub.txt")
+                )
             # TODO: separate this per genome
             linkToTrackHub(
                 trackHubURL="{0}/{1}/bigWig/trackHub.txt".format(args.url_root, args.project_name),
                 fileName=os.path.join(projectDir, "ucsc_tracks.html"),
                 genome='human'
             )
-            
+
         # if args.stage in ["all", "qc"]:
         #     if tagmented:
         #         jobCode += qc()
@@ -791,7 +898,7 @@ def qc():
     $PRESEQ lc_extrap -e 1e8 -s 2e6 -B $PROJECTDIR/mapped/$SAMPLE_NAME.trimmed.bowtie2.sorted.shifted.dup.bam \
     -o $PROJECTDIR/mapped/$SAMPLE_NAME_qc_lc_extrap.txt
     """
-    raise NotImplemented
+    raise NotImplementedError("Function not implemented yet.")
 
 
 def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
@@ -812,6 +919,8 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
         then
         rm {2}.cov
     fi
+
+    chmod 755 {3}
 
     """.format(inputBam, genomeSizes, transientFile, outputBigWig)
     else:
@@ -862,7 +971,7 @@ def linkToTrackHub(trackHubURL, fileName, genome):
     """.format(trackHubURL=trackHubURL, fileName=fileName, genome=genome)
     
     with open(fileName, 'w') as handle:
-        handle.write(html)
+        handle.write(textwrap.dedent(html))
 
 
 def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, broad=False):
@@ -954,105 +1063,12 @@ def centerPeaksOnMotifs(peakFile, genome, windowWidth, motifFile, outputBed):
 
 
 def footprintAnalysis():
-    raise NotImplemented
-
+    raise NotImplementedError("Function not implemented yet.")
 
 
 if __name__ == '__main__':
-    ### Parse command-line arguments
-    parser = ArgumentParser(
-        description = 'ChIP-seq pipeline.'
-    )
-
-    ### Global options
-    # positional arguments
-    # optional arguments
-    parser.add_argument('-r', '--project-root', default="/fhgfs/groups/lab_bock/shared/projects/",
-                        dest='project_root', type=str,
-                        help='Directory in which the project will reside. Default=/fhgfs/groups/lab_bock/shared/projects/.')
-    parser.add_argument('--html-root', default="/fhgfs/groups/lab_bock/public_html/",
-                        dest='html_root', type=str,
-                        help='public_html directory in which bigwig files for the project will reside. Default=/fhgfs/groups/lab_bock/public_html/.')
-    parser.add_argument('--url-root', default="http://www.biomedical-sequencing.at/bocklab/",
-                        dest='url_root', type=str,
-                        help='Url mapping to public_html directory where bigwig files for the project will be accessed. Default=http://www.biomedical-sequencing.at/bocklab/.')
-    parser.add_argument('--keep-tmp-files', dest='keep_tmp', action='store_true', 
-                        help='Keep intermediary files. If not it will only preserve final files. Default=False.') 
-    parser.add_argument('-c', '--cpus', default=16, dest='cpus',
-                        help='Number of CPUs to use. Default=16.', type=int)
-    parser.add_argument('-m', '--mem-per-cpu', default=2000, dest='mem',
-                        help='Memory per CPU to use. Default=2000.', type=int)
-    parser.add_argument('-q', '--queue', default="shortq", dest='queue',
-                        choices=["develop", "shortq", "mediumq", "longq"],
-                        help='Queue to submit jobs to. Default=shortq', type=str)
-    parser.add_argument('-t', '--time', default="10:00:00", dest='time',
-                        help='Maximum time for jobs to run. Default=10:00:00', type=str)
-    parser.add_argument('--user-mail', default="", dest='user_mail',
-                        help='User mail address. Default=<submitting user>.', type=str)
-    parser.add_argument('-l', '--log-level', default="INFO", dest='log_level',
-                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help='Logging level. Default=INFO.', type=str)
-    parser.add_argument('--dry-run', dest='dry_run', action='store_true', 
-                        help='Dry run. Assemble commands, but do not submit jobs to slurm. Default=False.')
-
-    ### Sub commands
-    subparser = parser.add_subparsers(title='sub-command', dest="command")
-    # preprocess
-    preprocess_subparser = subparser.add_parser("preprocess")
-    preprocess_subparser.add_argument(dest='project_name', help="Project name.", type=str)
-    preprocess_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
-    preprocess_subparser.add_argument('-s', '--stage', default="all", dest='stage',
-                        choices=["all", "bam2fastq", "fastqc", "trimming", "mapping",
-                                 "shiftreads", "markduplicates", "removeduplicates", "indexbam", "qc", "maketracks", "mergereplicates"],
-                        help='Run only these stages. Default=all.', type=str)   
-    #comparison
-    comparison_subparser = subparser.add_parser("comparison")
-    comparison_subparser.add_argument(dest='project_name', help="Project name.", type=str)
-    comparison_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
-    comparison_subparser.add_argument('-s', '--stage', default="all", dest='stage',
-                        choices=["all", "callpeaks", "findmotifs", "correlations"],
-                        help='Run only these stages. Default=all.', type=str)
-    comparison_subparser.add_argument('--peak-caller', default="macs2", choices=["macs2", "spp"],
-                        dest='peak_caller', help='Peak caller to use. Default=macs2.', type=str)
-    comparison_subparser.add_argument('--peak-window-width', default=2000,
-                        dest='peak_window_width', help='Width of window around peak motifs. Default=2000.', type=int)
-    comparison_subparser.add_argument('--duplicates', dest='duplicates', action='store_true', 
-                        help='Allow duplicates in coorelation analysis. Default=False.')
-    comparison_subparser.add_argument('--genome-window-width', default=1000,
-                        dest='genome_window_width', help='Width of window to make genome-wide correlations. Default=1000.', type=int)
-
-    # parse
-    args = parser.parse_args()
-
-
-    ### Logging
-    logger = logging.getLogger(__name__)
-    levels = {"DEBUG" : logging.DEBUG, "INFO" : logging.INFO, 'WARNING': logging.WARNING, "ERROR" : logging.ERROR, "CRITICAL" : logging.CRITICAL}
-    logger.setLevel(levels[args.log_level])
-
-    # create a file handler
-    # (for now in current working dir, in the end copy log to projectDir)
-    handler = logging.FileHandler(os.path.join(os.getcwd(), args.project_name + ".log"))
-    handler.setLevel(logging.INFO)
-    # format logger
-    formatter = logging.Formatter(fmt='%(levelname)s: %(asctime)s - %(message)s', datefmt='%Y/%m/%d %H:%M:%S')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-    # create a stout handler
-    stdout = logging.StreamHandler(sys.stdout)
-    stdout.setLevel(logging.ERROR)
-    formatter = logging.Formatter(fmt='%(levelname)s: %(asctime)s - %(message)s', datefmt='%Y/%m/%d %H:%M:%S')
-    stdout.setFormatter(formatter)
-    logger.addHandler(stdout)
-
-
-    ### Start main function
-    if args.command == "preprocess":
-        preprocess(args, logger)
-    elif args.command == "comparison":
-        comparison(args, logger)
-
-
-    ### Exit
-    logger.info("Finished and exiting.")
-    sys.exit(0)
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Program canceled by user!")
+        sys.exit(0)

@@ -4,6 +4,7 @@
 ChIP-seq pipeline 
     
     #### BUGS
+    Keep track of original bam file location (1 technical replicate)
     Info "exiting" after copying log
     chmod 755 parent bigWig folder
 
@@ -202,11 +203,11 @@ def checkTechnicalReplicates(samples):
     exclude = ["sampleNumber", "sampleName", "technicalReplicate", "filePath", "controlSampleNumber"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
-    unique = samples.replace(np.nan, -1).groupby(variables).apply(len).index.values
+    unique = samples.replace(np.nan, -1).groupby(variables).apply(len).index.values 
 
     biologicalReplicates = dict()
     for sample in xrange(len(unique)):
-        replicate = pd.Series(unique[sample],index=variables)
+        replicate = pd.Series(unique[sample], index=variables)
         for row in xrange(len(samples.replace(np.nan, -1)[variables])):
             if (replicate == samples.replace(np.nan, -1)[variables].ix[row]).all():
                 if sample not in biologicalReplicates:
@@ -261,14 +262,15 @@ def preprocess(args, logger):
 
     # Get biological replicates from technical
     logger.debug("Checking which technical replicates form biological replicates.")
-    biologicalReplicates = checkTechnicalReplicates(samples)
-
+    biologicalReplicates = checkTechnicalReplicates(samples) # sorted differently than input annotation
     # Preprocess biological replicates
     samplesMerged = list()
     for sample in xrange(len(biologicalReplicates)):
         if len(biologicalReplicates) == 0:
-            logger.error("")
+            logger.error("No samples in sheet.")
             sys.exit(1)
+        if len(biologicalReplicates.values()[sample]) == 1: # patch
+            originalBam = biologicalReplicates.values()[sample][0]["filePath"]
 
         ### Get sample name
         variables = samples.columns.tolist()
@@ -294,7 +296,7 @@ def preprocess(args, logger):
         jobName = projectName + "_" + sampleName
 
         # check if sample is tagmented or not:
-        tagmented = samples["tagmented"][sample] == "yes" or samples["tagmented"][sample] == 1
+        tagmented = biologicalReplicates[sample][0]["tagmented"] == "yes" or biologicalReplicates[sample][0]["tagmented"] == 1
 
         if not tagmented:
             bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2")
@@ -333,7 +335,7 @@ def preprocess(args, logger):
             if args.stage in ["all", "bam2fastq"]:
                 if len(biologicalReplicates.values()[sample]) == 1:
                     jobCode += bam2fastq(
-                        inputBam=samples["filePath"][sample],
+                        inputBam=originalBam,
                         outputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq")
                     )
                 elif len(biologicalReplicates.values()[sample]) >= 1:
@@ -423,7 +425,8 @@ def preprocess(args, logger):
                 jobCode += addTrackToHub(
                     sampleName=sampleName,
                     trackURL=urlRoot + sampleName + ".5prime.bigWig",
-                    trackHub=os.path.join(htmlDir, "trackHub.txt")
+                    trackHub=os.path.join(htmlDir, "trackHub.txt"),
+                    fivePrime="5prime"
                 )
             # TODO: separate this per genome
             linkToTrackHub(
@@ -905,7 +908,7 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
     transientFile = os.path.abspath(re.sub("\.bigWig" , "", outputBigWig))
     if not tagmented:
         command = """
-    # making bigWig tracks from bam file
+    # Making bigWig tracks from bam file
     echo "making bigWig tracks from bam file"
     module load bedtools
 
@@ -925,9 +928,9 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
     """.format(inputBam, genomeSizes, transientFile, outputBigWig)
     else:
         command = """
-    # making bigWig tracks from bam file
+    # Making bigWig tracks from bam file
     echo "making bigWig tracks from bam file"
-    module load 
+    #module load 
 
     bamToBed -i {0} | \\
     python {4}/lib/get5primePosition.py | \\
@@ -948,15 +951,15 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
     return command
 
 
-def addTrackToHub(sampleName, trackURL, trackHub):
+def addTrackToHub(sampleName, trackURL, trackHub, fivePrime=""):
     command = """
-    # adding track to TrackHub
+    # Adding track to TrackHub
     echo "Adding track to TrackHub"
-    echo 'track type=bigWig name="{0}" description="{0}" visibility=3 bigDataUrl={1}' >> {2}
+    echo 'track type=bigWig name="{0} {3}" description="{0} {3}" visibility=3 bigDataUrl={1}' >> {2}
 
     chmod 755 {2}
 
-    """.format(sampleName, trackURL, trackHub)
+    """.format(sampleName, trackURL, trackHub, fivePrime)
 
     return command
 
@@ -977,7 +980,7 @@ def linkToTrackHub(trackHubURL, fileName, genome):
 def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, broad=False):
     if not broad:
         command = """
-    # calling peaks with MACS2
+    # Calling peaks with MACS2
     echo "calling peaks with MACS2"
 
     macs2 callpeak -t {0} -c {1} \\
@@ -987,7 +990,7 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, broad=False)
     """.format(treatmentBam, controlBam, sampleName, outputDir)
     else:
         command = """
-    # call peaks with MACS2
+    # Call peaks with MACS2
         
     macs2 callpeak -B -t {0} -c {1} \\
     --broad --nomodel --extsize 200 --pvalue 1e-3 \\
@@ -1000,7 +1003,7 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, broad=False)
 
 def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir, cpus):
     command = """
-    # calling peaks with SPP
+    # Calling peaks with SPP
     echo "calling peaks with SPP"
 
     Rscript {6}/lib/spp_peak_calling.R {0} {1} {2} {3} {4} {5}
@@ -1013,7 +1016,7 @@ def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir
 
 def plotCorrelations(inputBams, plotsDir, duplicates=False, windowWidth=1000, fragmentSize=50, genome="hg19"):
     command = """
-    # plot correlations
+    # Plot correlations
     echo "plotting correlations"
 
     python {6}/lib/correlations.py {0} {1} --duplicates {2} --window-width {3} --fragment-size {4} --genome {5}
@@ -1026,7 +1029,7 @@ def plotCorrelations(inputBams, plotsDir, duplicates=False, windowWidth=1000, fr
 
 def homerFindMotifs(peakFile, genome, outputDir, size=150, length="8,10,12"):
     command = """
-    # find motifs with Homer
+    # Find motifs with Homer
     echo "finding motifs with Homer"
 
     findMotifsGenome.pl {0} {1} {2} -mask -size {3} -len {4}
@@ -1038,7 +1041,7 @@ def homerFindMotifs(peakFile, genome, outputDir, size=150, length="8,10,12"):
 
 def AnnotatePeaks(peakFile, genome, motifFile, outputBed):
     command = """
-    # annotate peaks with motif score
+    # Annotate peaks with motif score
     echo "annotating peaks with motif score"
 
     annotatePeaks.pl {0} {1} -mask -mscore -m {2} | \\
@@ -1050,7 +1053,7 @@ def AnnotatePeaks(peakFile, genome, motifFile, outputBed):
 
 def centerPeaksOnMotifs(peakFile, genome, windowWidth, motifFile, outputBed):
     command = """
-    # center peaks on motif
+    # Center peaks on motif
     echo "centering peaks on motif"
 
     annotatePeaks.pl {0} {1} -size {2} -center {3} | \\

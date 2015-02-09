@@ -13,9 +13,11 @@ ChIP-seq pipeline
     UCSC track description 5prime add 5prime
 
     #### FURTHER TO IMPLEMENT
+    check annotation sheets are right
     call footprints
     copy original sample annotation file to projectDir
     merge biological replicates, process again
+    Rscript macs2_model.r
 
 """
 
@@ -530,19 +532,16 @@ def comparison(args, logger):
 
         ### Control name
         control = False
-        if samples.ix[sample]["controlSampleNumber"] != "nan":
-            # TODO:
-            # Get control samples by "controlSampleNumber" rather than df index
-            if str(int(samples.ix[sample]["controlSampleNumber"])) != "nan":
-                control = True
-                controlIdx = int(samples.ix[sample]["controlSampleNumber"]) - 1
+        if not np.isnan(samples.ix[sample]["controlSampleNumber"]):
+            control = True
+            controlIdx = int(samples.ix[sample]["controlSampleNumber"]) - 1
 
-                # if sampleName is not provided, use a concatenation of several variable (excluding longest)
-                if str(samples["sampleName"][controlIdx]) != "nan":
-                    controlName = samples["sampleName"][controlIdx]
-                else:                
-                    controlName = string.join([str(samples[var][controlIdx]) for var in variables], sep="_")
-                    logger.debug("No sample name provided, using concatenation of variables supplied")
+            # if sampleName is not provided, use a concatenation of several variable (excluding longest)
+            if str(samples["sampleName"][controlIdx]) != "nan":
+                controlName = samples["sampleName"][controlIdx]
+            else:                
+                controlName = string.join([str(samples[var][controlIdx]) for var in variables], sep="_")
+                logger.debug("No sample name provided, using concatenation of variables supplied")
 
         jobName = projectName + "_" + sampleName
 
@@ -627,17 +626,19 @@ def comparison(args, logger):
                 outputBed=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifAnnotated.bed")
             )
 
-        if args.stage in ["all", "footprints"] and control:
-            jobCode += footprintAnalysis(
-                os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifCentered.bed"),
-                os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifAnnotated.bed")
-            )
+        # if args.stage in ["all", "footprints"] and control:
+        #     jobCode += footprintAnalysis(
+        #         os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifCentered.bed"),
+        #         os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifAnnotated.bed")
+        #     )
 
         # finish job
         jobCode += slurmFooter()
         jobs[jobName] = jobCode
 
     # Submit job for all samples together
+    jobName = projectName + "_" + "sample_correlations"
+
     if args.stage in ["all", "correlations"]:
         # TODO:
         # Submit separate jobs for each genome
@@ -1016,19 +1017,6 @@ def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir
     return command
 
 
-def plotCorrelations(inputBams, plotsDir, duplicates=False, windowWidth=1000, fragmentSize=50, genome="hg19"):
-    command = """
-    # Plot correlations
-    echo "plotting correlations"
-
-    python {6}/lib/correlations.py {0} {1} --duplicates {2} --window-width {3} --fragment-size {4} --genome {5}
-
-    """.format(plotsDir, (" ".join(["%s"] * len(inputBams))) % tuple(inputBams),
-        duplicates, windowWidth, fragmentSize, genome, os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
-    
-    return command
-
-
 def homerFindMotifs(peakFile, genome, outputDir, size=150, length="8,10,12"):
     command = """
     # Find motifs with Homer
@@ -1059,7 +1047,7 @@ def centerPeaksOnMotifs(peakFile, genome, windowWidth, motifFile, outputBed):
     echo "centering peaks on motif"
 
     annotatePeaks.pl {0} {1} -size {2} -center {3} | \\
-    awk -v OFS='\t' '{print $2, $3, $4, $1, $6, $5}' | \\
+    awk -v OFS='\\t' '{{print $2, $3, $4, $1, $6, $5}}' | \\
     python {4}/lib/fix_bedfile_genome_boundaries.py | \\
     sortBed > {5}
     """.format(peakFile, genome, windowWidth, motifFile, os.path.abspath(os.path.dirname(os.path.realpath(__file__))), outputBed)
@@ -1069,6 +1057,28 @@ def centerPeaksOnMotifs(peakFile, genome, windowWidth, motifFile, outputBed):
 
 def footprintAnalysis():
     raise NotImplementedError("Function not implemented yet.")
+
+
+def plotCorrelations(inputBams, plotsDir, duplicates=False, windowWidth=1000, fragmentSize=50, genome="hg19"):
+    command = """
+    # Plot correlations
+    echo "plotting correlations"
+
+    source ~/venv/bin/activate
+
+    python {5}/lib/correlations.py {0} {1} --window-width {2} --fragment-size {3} --genome {4} 
+
+    """.format(plotsDir, " ".join(["%s"] * len(inputBams)) % tuple(inputBams),
+        windowWidth, fragmentSize, genome,
+        os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
+    )
+
+    if duplicates:
+        command += "--duplicates"
+    
+    command += "\n    deactivate\n"
+
+    return command
 
 
 if __name__ == '__main__':

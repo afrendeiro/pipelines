@@ -35,10 +35,13 @@ def coverage(bam, intervals, fragmentsize, duplicates=False):
     fragmentsize - integer.
     duplicates - boolean.
     """
+    chroms = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9', 'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17', 'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX']
     # Loop through TSSs, get coverage, append to dict
     cov = dict()
 
     for name, feature in intervals.iteritems():
+        if feature.chrom not in chroms:
+            continue
         count = 0
         
         # Fetch alignments in feature window
@@ -82,9 +85,7 @@ def main(args):
     """)
 
     # Get sample names
-    names = list()
-    for bam in args.bamfiles:
-        names.append(re.sub(os.path.basename(bam), "\.bam", ""))
+    names = [re.sub(os.path.basename(bam), "\.bam", "") for bam in args.bamfiles]
 
     # Get genome-wide windows
     windows = makeWindows(args.window_width, args.genome)
@@ -95,7 +96,7 @@ def main(args):
         # Load bam
         bamfile = HTSeq.BAM_Reader(args.bamfiles[bam])
         # Get dataframe of bam coverage in bed regions, append to dict
-        rawSignals[signal] = coverage(bamfile, windows, args.fragment_size, args.duplicates)
+        rawSignals[names[bam]] = coverage(bamfile, windows, args.fragment_size, args.duplicates)
 
     df = pd.DataFrame(rawSignals)
 

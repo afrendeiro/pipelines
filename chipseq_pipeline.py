@@ -95,7 +95,7 @@ def main():
     comparison_subparser.add_argument(dest='project_name', help="Project name.", type=str)
     comparison_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
     comparison_subparser.add_argument('-s', '--stage', default="all", dest='stage',
-                        choices=["all", "callpeaks", "findmotifs", "correlations"],
+                        choices=["all", "callpeaks", "findmotifs", "centerpeaks", "annotatepeaks", "footprints", "correlations"],
                         help='Run only these stages. Default=all.', type=str)
     comparison_subparser.add_argument('--peak-caller', default="macs2", choices=["macs2", "spp"],
                         dest='peak_caller', help='Peak caller to use. Default=macs2.', type=str)
@@ -513,7 +513,7 @@ def comparison(args, logger):
     
     # Preprocess samples
     variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSample", "controlSampleNumber"]
+    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleNumber"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
     # track jobs to submit
@@ -530,7 +530,7 @@ def comparison(args, logger):
 
         ### Control name
         control = False
-        if samples.ix[sample]["controlSample"] == "yes":
+        if samples.ix[sample]["controlSampleNumber"] != "nan":
             # TODO:
             # Get control samples by "controlSampleNumber" rather than df index
             if str(int(samples.ix[sample]["controlSampleNumber"])) != "nan":

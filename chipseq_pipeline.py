@@ -236,7 +236,7 @@ def preprocess(args, logger):
         "mm10" : "/home/arendeiro/mm10.chrom.sizes",
         "dr7" : "/home/arendeiro/danRer7.chrom.sizes"
     }
-    adapterFasta = "/home/arendeiro/adapters/chipmentation.fa"
+    adapterFasta = "/fhgfs/groups/lab_bock/shared/chipmentation.fa"
     
     ### Other static info
 

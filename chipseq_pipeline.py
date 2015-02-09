@@ -811,6 +811,7 @@ def bowtie2Map(inputFastq, outputBam, genomeIndex, cpus):
     # Mapping reads with Bowtie2
     echo "Mapping reads with Bowtie2"
     module load bowtie/2.2.3
+    module load samtools
     
     bowtie2 --very-sensitive -p {0} -x {1} {2} | \\
     samtools view -S -b - | \\
@@ -1005,6 +1006,7 @@ def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir
     command = """
     # Calling peaks with SPP
     echo "calling peaks with SPP"
+    module load R
 
     Rscript {6}/lib/spp_peak_calling.R {0} {1} {2} {3} {4} {5}
 

@@ -1,15 +1,17 @@
 #!/usr/env python
 
 from argparse import ArgumentParser
-import os, re
+import os
+import re
 from pybedtools import BedTool
 import HTSeq
 import numpy as np
 import pandas as pd
 import string
+import itertools
 
-import rpy2.robjects as robj # for ggplot in R
-import rpy2.robjects.pandas2ri # for R dataframe conversion
+import rpy2.robjects as robj  # for ggplot in R
+import rpy2.robjects.pandas2ri  # for R dataframe conversion
 
 
 def makeWindows(windowWidth, genome):
@@ -43,7 +45,7 @@ def coverage(bam, intervals, fragmentsize, duplicates=False):
         if feature.chrom not in chroms:
             continue
         count = 0
-        
+
         # Fetch alignments in feature window
         for aln in bam[feature]:
             # check if duplicate
@@ -52,10 +54,10 @@ def coverage(bam, intervals, fragmentsize, duplicates=False):
 
             # adjust fragment to size
             aln.iv.length = fragmentsize
-            
+
             # add +1 to all positions overlapped by read within window
             count += 1
-        
+
         # append feature profile to dict
         cov[name] = count
     return cov
@@ -67,9 +69,9 @@ def main(args):
         library(reshape2)
 
         function(df, path){
-            # scatterplot 
+            # scatterplot
             pdf(path, height = 7, width = 7)
-            
+
             par(pty = "s")
 
             smoothScatter(df[1], df[2], col = rgb(104,104,104,50 , maxColorValue = 255), pch = 16, nrpoints = 0, ann = FALSE, xaxt = 'n')
@@ -100,8 +102,8 @@ def main(args):
 
     df = pd.DataFrame(rawSignals)
 
-    # Normalize to library size 
-    dfNorm = df.apply(lambda x: np.log2( 1 + (x / x.sum()) * 1000000))
+    # Normalize to library size
+    dfNorm = df.apply(lambda x: np.log2(1 + (x / x.sum()) * 1000000))
 
     # pick samples pairwisely
     for sample1, sample2 in itertools.combinations(dfNorm.columns, 2):
@@ -115,16 +117,16 @@ def main(args):
 
 
 if __name__ == '__main__':
-    ### Parse command-line arguments
+    # Parse command-line arguments
     parser = ArgumentParser(
-        description = 'correlations.py',
-        usage       = 'python correlations.py [options] <directory> file1 [file2 ... fileN]'
+        description='correlations.py',
+        usage='python correlations.py [options] <directory> file1 [file2 ... fileN]'
     )
 
-    ### Global options
+    # Global options
     # positional arguments
     parser.add_argument(dest='plots_dir', type=str, help='Directory to save plots to.')
-    parser.add_argument('bamfiles', nargs = '*', help = 'bamFiles')
+    parser.add_argument('bamfiles', nargs='*', help='bamFiles')
     # optional arguments
     parser.add_argument('--duplicates', dest='duplicates', action='store_true')
     parser.add_argument('--window-width', dest='window_width', type=int, default=1000)

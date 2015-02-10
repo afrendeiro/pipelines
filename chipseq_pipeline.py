@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 """
-ChIP-seq pipeline 
-    
-    #### BUGS
+ChIP-seq pipeline
+
+    ## BUGS
     Keep track of original bam file location (1 technical replicate)
     Info "exiting" after copying log
     chmod 755 parent bigWig folder
@@ -12,7 +12,7 @@ ChIP-seq pipeline
 
     UCSC track description 5prime add 5prime
 
-    #### FURTHER TO IMPLEMENT
+    ## FURTHER TO IMPLEMENT
     check annotation sheets are right
     call footprints
     copy original sample annotation file to projectDir
@@ -47,12 +47,10 @@ __status__ = "Development"
 
 
 def main():
-    ### Parse command-line arguments
-    parser = ArgumentParser(
-        description = 'ChIP-seq pipeline.'
-    )
+    # Parse command-line arguments
+    parser = ArgumentParser(description='ChIP-seq pipeline.')
 
-    ### Global options
+    # Global options
     # positional arguments
     # optional arguments
     parser.add_argument('-r', '--project-root', default="/fhgfs/groups/lab_bock/shared/projects/",
@@ -64,8 +62,8 @@ def main():
     parser.add_argument('--url-root', default="http://www.biomedical-sequencing.at/bocklab/arendeiro/",
                         dest='url_root', type=str,
                         help='Url mapping to public_html directory where bigwig files for the project will be accessed. Default=http://www.biomedical-sequencing.at/bocklab.')
-    parser.add_argument('--keep-tmp-files', dest='keep_tmp', action='store_true', 
-                        help='Keep intermediary files. If not it will only preserve final files. Default=False.') 
+    parser.add_argument('--keep-tmp-files', dest='keep_tmp', action='store_true',
+                        help='Keep intermediary files. If not it will only preserve final files. Default=False.')
     parser.add_argument('-c', '--cpus', default=16, dest='cpus',
                         help='Number of CPUs to use. Default=16.', type=int)
     parser.add_argument('-m', '--mem-per-cpu', default=2000, dest='mem',
@@ -79,42 +77,43 @@ def main():
                         help='User mail address. Default=<submitting user>.', type=str)
     parser.add_argument('-l', '--log-level', default="INFO", dest='log_level',
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help='Logging level. Default=INFO.', type=str)
-    parser.add_argument('--dry-run', dest='dry_run', action='store_true', 
+    parser.add_argument('--dry-run', dest='dry_run', action='store_true',
                         help='Dry run. Assemble commands, but do not submit jobs to slurm. Default=False.')
 
-    ### Sub commands
+    # Sub commands
     subparser = parser.add_subparsers(title='sub-command', dest="command")
     # preprocess
     preprocess_subparser = subparser.add_parser("preprocess")
     preprocess_subparser.add_argument(dest='project_name', help="Project name.", type=str)
     preprocess_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
     preprocess_subparser.add_argument('-s', '--stage', default="all", dest='stage',
-                        choices=["all", "bam2fastq", "fastqc", "trimming", "mapping",
-                                 "shiftreads", "markduplicates", "removeduplicates", "indexbam", "qc", "maketracks", "mergereplicates"],
-                        help='Run only these stages. Default=all.', type=str)   
-    #comparison
+                                      choices=["all", "bam2fastq", "fastqc", "trimming", "mapping",
+                                               "shiftreads", "markduplicates", "removeduplicates",
+                                               "indexbam", "qc", "maketracks", "mergereplicates"],
+                                      help='Run only these stages. Default=all.', type=str)
+    # comparison
     comparison_subparser = subparser.add_parser("comparison")
     comparison_subparser.add_argument(dest='project_name', help="Project name.", type=str)
     comparison_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
     comparison_subparser.add_argument('-s', '--stage', default="all", dest='stage',
-                        choices=["all", "callpeaks", "findmotifs", "centerpeaks", "annotatepeaks", "footprints", "correlations"],
-                        help='Run only these stages. Default=all.', type=str)
+                                      choices=["all", "callpeaks", "findmotifs", "centerpeaks",
+                                               "annotatepeaks", "footprints", "correlations"],
+                                      help='Run only these stages. Default=all.', type=str)
     comparison_subparser.add_argument('--peak-caller', default="macs2", choices=["macs2", "spp"],
-                        dest='peak_caller', help='Peak caller to use. Default=macs2.', type=str)
+                                      dest='peak_caller', help='Peak caller to use. Default=macs2.', type=str)
     comparison_subparser.add_argument('--peak-window-width', default=2000,
-                        dest='peak_window_width', help='Width of window around peak motifs. Default=2000.', type=int)
-    comparison_subparser.add_argument('--duplicates', dest='duplicates', action='store_true', 
-                        help='Allow duplicates in coorelation analysis. Default=False.')
+                                      dest='peak_window_width', help='Width of window around peak motifs. Default=2000.', type=int)
+    comparison_subparser.add_argument('--duplicates', dest='duplicates', action='store_true',
+                                      help='Allow duplicates in coorelation analysis. Default=False.')
     comparison_subparser.add_argument('--genome-window-width', default=1000,
-                        dest='genome_window_width', help='Width of window to make genome-wide correlations. Default=1000.', type=int)
+                                      dest='genome_window_width', help='Width of window to make genome-wide correlations. Default=1000.', type=int)
 
-    # parse
+    # Parse
     args = parser.parse_args()
 
-
-    ### Logging
+    # Logging
     logger = logging.getLogger(__name__)
-    levels = {"DEBUG" : logging.DEBUG, "INFO" : logging.INFO, 'WARNING': logging.WARNING, "ERROR" : logging.ERROR, "CRITICAL" : logging.CRITICAL}
+    levels = {"DEBUG": logging.DEBUG, "INFO": logging.INFO, 'WARNING': logging.WARNING, "ERROR": logging.ERROR, "CRITICAL": logging.CRITICAL}
     logger.setLevel(levels[args.log_level])
 
     # create a file handler
@@ -133,21 +132,19 @@ def main():
     stdout.setFormatter(formatter)
     logger.addHandler(stdout)
 
-
-    ### Start main function
+    # Start main function
     if args.command == "preprocess":
         preprocess(args, logger)
     elif args.command == "comparison":
         comparison(args, logger)
 
-
-    ### Exit
+    # Exit
     logger.info("Finished and exiting.")
     sys.exit(0)
 
 
 def checkProjectDirs(args, logger):
-    ### Directories and paths
+    # Directories and paths
     # check args.project_root exists and user has write access
     args.project_root = os.path.abspath(args.project_root)
     logger.debug("Checking if %s directory exists and is writable." % args.project_root)
@@ -168,7 +165,7 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
     projectDir = os.path.join(args.project_root, args.project_name)
     dataDir = os.path.join(projectDir, "data")
     resultsDir = os.path.join(projectDir, "results")
-    
+
     # make relative project dirs
     dirs = [
         projectDir,
@@ -205,7 +202,7 @@ def checkTechnicalReplicates(samples):
     exclude = ["sampleNumber", "sampleName", "technicalReplicate", "filePath", "controlSampleNumber"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
-    unique = samples.replace(np.nan, -1).groupby(variables).apply(len).index.values 
+    unique = samples.replace(np.nan, -1).groupby(variables).apply(len).index.values
 
     biologicalReplicates = dict()
     for sample in xrange(len(unique)):
@@ -223,34 +220,33 @@ def checkTechnicalReplicates(samples):
 def preprocess(args, logger):
     logger.info("Starting sample preprocessing.")
 
-    logger.debug("Checking project directories exist and creating if not.")    
+    logger.debug("Checking project directories exist and creating if not.")
     htmlDir, projectDir, dataDir, resultsDir, urlRoot = checkProjectDirs(args, logger)
 
-    ### Paths to static files on the cluster
+    # Paths to static files on the cluster
     genomeFolder = "/fhgfs/prod/ngs_resources/genomes/"
     genomeIndexes = {
-        "hg19" : os.path.join(genomeFolder, "hg19/forBowtie2/hg19"),
-        "mm10" : os.path.join(genomeFolder, "mm10/forBowtie2/mm10"),
-        "dr7" : os.path.join(genomeFolder, "dr7/forBowtie2/dr7")
+        "hg19": os.path.join(genomeFolder, "hg19/forBowtie2/hg19"),
+        "mm10": os.path.join(genomeFolder, "mm10/forBowtie2/mm10"),
+        "dr7": os.path.join(genomeFolder, "dr7/forBowtie2/dr7")
     }
     genomeSizes = {
-        "hg19" : os.path.join(genomeFolder, "hg19/hg19_chromlengths.txt"),
-        "mm10" : "/home/arendeiro/mm10.chrom.sizes",
-        "dr7" : "/home/arendeiro/danRer7.chrom.sizes"
+        "hg19": os.path.join(genomeFolder, "hg19/hg19_chromlengths.txt"),
+        "mm10": "/home/arendeiro/mm10.chrom.sizes",
+        "dr7": "/home/arendeiro/danRer7.chrom.sizes"
     }
     adapterFasta = "/fhgfs/groups/lab_bock/shared/chipmentation.fa"
-    
-    ### Other static info
 
+    # Other static info
 
-    ### Parse sample information
+    # Parse sample information
     args.csv = os.path.abspath(args.csv)
 
     # check if exists and is a file
     if not os.path.isfile(args.csv):
         logger.error("Sample annotation '%s' does not exist, or user has no read access." % args.csv)
         sys.exit(1)
-    
+
     # read in
     samples = pd.read_csv(args.csv)
 
@@ -258,23 +254,22 @@ def preprocess(args, logger):
     # Perform checks on the variables given
     # (e.g. genome in genomeIndexes)
 
-
     # start pipeline
     projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
 
     # Get biological replicates from technical
     logger.debug("Checking which technical replicates form biological replicates.")
-    biologicalReplicates = checkTechnicalReplicates(samples) # sorted differently than input annotation
+    biologicalReplicates = checkTechnicalReplicates(samples)  # sorted differently than input annotation
     # Preprocess biological replicates
     samplesMerged = list()
     for sample in xrange(len(biologicalReplicates)):
         if len(biologicalReplicates) == 0:
             logger.error("No samples in sheet.")
             sys.exit(1)
-        if len(biologicalReplicates.values()[sample]) == 1: # patch
+        if len(biologicalReplicates.values()[sample]) == 1:  # patch
             originalBam = biologicalReplicates.values()[sample][0]["filePath"]
 
-        ### Get sample name
+        # Get sample name
         variables = samples.columns.tolist()
         exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleNumber"]
         [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
@@ -329,7 +324,7 @@ def preprocess(args, logger):
             # if more than one technical replicate, merge bams
             if len(biologicalReplicates.values()[sample]) > 1:
                 jobCode += mergeBams(
-                    inputBams=[s["filePath"] for s in biologicalReplicates.values()[sample]],
+                    inputBams=[ss["filePath"] for ss in biologicalReplicates.values()[sample]],
                     outputBam=os.path.join(dataDir, "raw", sampleName + ".bam")
                 )
 
@@ -449,8 +444,7 @@ def preprocess(args, logger):
             for fileName in tempFiles:
                 jobCode += removeFile(fileName)
 
-
-        ### Submit job to slurm
+        # Submit job to slurm
         # Get concatenated string with code from all modules
         jobCode += slurmFooter()
 
@@ -475,7 +469,7 @@ def preprocess(args, logger):
     df["controlSampleNumber"] = None
     df.to_csv(os.path.join(projectDir, args.project_name + ".biol_replicates.annotation_sheet.csv"), index=False)
 
-    #### Copy log to projectDir
+    # Copy log to projectDir
     shutil.copy2(
         os.path.join(os.getcwd(), args.project_name + ".log"),
         os.path.join(projectDir, "runs", args.project_name + ".log")
@@ -486,23 +480,22 @@ def preprocess(args, logger):
 def comparison(args, logger):
     logger.info("Starting sample comparison.")
 
-    logger.debug("Checking project directories exist and creating if not.")    
+    logger.debug("Checking project directories exist and creating if not.")
     htmlDir, projectDir, dataDir, resultsDir, urlRoot = checkProjectDirs(args, logger)
 
+    # Paths to static files on the cluster
 
-    ### Paths to static files on the cluster
-
-    ### Other static info
+    # Other static info
     broadFactors = ["H3K27me3", "H3K36me3", "H3K9me3"]
 
-    ### Parse sample information
+    # Parse sample information
     args.csv = os.path.abspath(args.csv)
 
     # check if exists and is a file
     if not os.path.isfile(args.csv):
         logger.error("Sample annotation '%s' does not exist, or user has no read access." % args.csv)
         sys.exit(1)
-    
+
     # read in
     samples = pd.read_csv(args.csv)
 
@@ -512,7 +505,7 @@ def comparison(args, logger):
 
     # start pipeline
     projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
-    
+
     # Preprocess samples
     variables = samples.columns.tolist()
     exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleNumber"]
@@ -522,7 +515,7 @@ def comparison(args, logger):
     jobs = dict()
 
     for sample in xrange(len(samples)):
-        ### Sample name
+        # Sample name
         # if sampleName is not provided, use a concatenation of several variable (excluding longest)
         if str(samples["sampleName"][sample]) != "nan":
             sampleName = samples["sampleName"][sample]
@@ -530,7 +523,7 @@ def comparison(args, logger):
             sampleName = string.join([str(samples[var][sample]) for var in variables], sep="_")
             logger.debug("No sample name provided, using concatenation of variables supplied")
 
-        ### Control name
+        # Control name
         control = False
         if not np.isnan(samples.ix[sample]["controlSampleNumber"]):
             control = True
@@ -539,7 +532,7 @@ def comparison(args, logger):
             # if sampleName is not provided, use a concatenation of several variable (excluding longest)
             if str(samples["sampleName"][controlIdx]) != "nan":
                 controlName = samples["sampleName"][controlIdx]
-            else:                
+            else:
                 controlName = string.join([str(samples[var][controlIdx]) for var in variables], sep="_")
                 logger.debug("No sample name provided, using concatenation of variables supplied")
 
@@ -572,13 +565,12 @@ def comparison(args, logger):
                         broad=False
                     )
                 else:
-                    jobCode += macs2CallPeaks(
-                    treatmentBam=os.path.abspath(samples.ix[sample]['filePath']),
-                    controlBam=os.path.abspath(samples.ix[controlIdx]['filePath']),
-                    outputDir=os.path.join(dataDir, "peaks", sampleName),
-                    sampleName=sampleName,
-                    broad=True
-                )
+                    jobCode += macs2CallPeaks(treatmentBam=os.path.abspath(samples.ix[sample]['filePath']),
+                                              controlBam=os.path.abspath(samples.ix[controlIdx]['filePath']),
+                                              outputDir=os.path.join(dataDir, "peaks", sampleName),
+                                              sampleName=sampleName,
+                                              broad=True
+                                              )
             elif args.peak_caller == "spp":
                 jobCode += sppCallPeaks(
                     treatmentBam=os.path.abspath(samples.ix[sample]['filePath']),
@@ -593,16 +585,15 @@ def comparison(args, logger):
             if not os.path.exists(os.path.join(dataDir, "motifs", sampleName)):
                     os.makedirs(os.path.join(dataDir, "motifs", sampleName))
 
-            jobCode += homerFindMotifs(
-                    peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
-                    genome=samples["genome"][sample],
-                    outputDir=os.path.join(dataDir, "motifs", sampleName),
-                    size="150",
-                    length="8,10,12"
-                )
-        
+            jobCode += homerFindMotifs(peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
+                                       genome=samples["genome"][sample],
+                                       outputDir=os.path.join(dataDir, "motifs", sampleName),
+                                       size="150",
+                                       length="8,10,12"
+                                       )
+
         if args.stage in ["all", "centerpeaks"] and control:
-            ### TODO:
+            # TODO:
             # right now this assumes peaks were called with MACS2
             # figure a way of magetting the peak files withough using the peak_caller option
             # for that would imply taht option would be required when selecting this stage
@@ -615,7 +606,7 @@ def comparison(args, logger):
             )
 
         if args.stage in ["all", "annotatepeaks"] and control:
-            ### TODO:
+            # TODO:
             # right now this assumes peaks were called with MACS2
             # figure a way of magetting the peak files withough using the peak_caller option
             # for that would imply taht option would be required when selecting this stage
@@ -662,8 +653,7 @@ def comparison(args, logger):
         jobCode += slurmFooter()
         jobs[jobName] = jobCode
 
-
-    ### Submit jobs to slurm
+    # Submit jobs to slurm
     for jobName, jobCode in jobs.items():
         # Output file name
         jobFile = os.path.join(projectDir, "runs", jobName + ".sh")
@@ -681,7 +671,7 @@ def comparison(args, logger):
                 sys.exit(1)
             logger.debug("Project '%s'submission finished successfully." % args.project_name)
 
-    #### Copy log to projectDir
+    # Copy log to projectDir
     shutil.copy2(
         os.path.join(os.getcwd(), args.project_name + ".log"),
         os.path.join(projectDir, "runs", args.project_name + ".log")
@@ -768,9 +758,9 @@ def bam2fastq(inputBam, outputFastq):
     # Converting original Bam file to Fastq
     echo "Converting original Bam file to Fastq"
     module load bamtools
-    
+
     bamtools convert -in {0} -format fastq -out {1}
-    
+
     """.format(inputBam, outputFastq)
 
     return command
@@ -780,7 +770,7 @@ def fastqc(inputFastq, outputDir):
     command = """
     # Measuring sample quality with Fastqc
     echo "Measuring sample quality with Fastqc"
-    module load java/jdk/1.7.0_65 
+    module load java/jdk/1.7.0_65
     module load FastQC/0.11.2
 
     fastqc --noextract --outdir {0} {1}
@@ -806,51 +796,52 @@ def trimAdapters(inputFastq, outputFastq, adapters):
 
     return command
 
+
 def bowtie2Map(inputFastq, outputBam, genomeIndex, cpus):
-    outputBam = re.sub("\.bam$" , "", outputBam)
+    outputBam = re.sub("\.bam$", "", outputBam)
     command = """
     # Mapping reads with Bowtie2
     echo "Mapping reads with Bowtie2"
     module load bowtie/2.2.3
     module load samtools
-    
+
     bowtie2 --very-sensitive -p {0} -x {1} {2} | \\
     samtools view -S -b - | \\
     samtools sort - {3}
-    
+
     """.format(cpus, genomeIndex, inputFastq, outputBam)
 
     return command
 
 
 def shiftReads(inputBam, outputBam):
-    outputBam = re.sub("\.bam$" , "", outputBam)
-    ### TODO:
+    outputBam = re.sub("\.bam$", "", outputBam)
+    # TODO:
     # Implement read shifting with HTSeq or Cython
     command = """
     # Shifting read of tagmented sample
     echo "Shifting read of tagmented sample"
     module load samtools
     module load python
-    
+
     samtools view -h {0} | \\
     python {1}/lib/shift_reads.py | \\
     samtools view -S -b - | \\
     samtools sort - {2}
-    
+
     """.format(inputBam, os.path.abspath(os.path.dirname(os.path.realpath(__file__))), outputBam)
 
     return command
-    
+
 
 def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
-    transientFile = re.sub("\.bam$" , "", outputBam) + ".dups.nosort.bam"
-    outputBam = re.sub("\.bam$" , "", outputBam)
+    transientFile = re.sub("\.bam$", "", outputBam) + ".dups.nosort.bam"
+    outputBam = re.sub("\.bam$", "", outputBam)
     command = """
     # Marking duplicates with piccard
     echo "Mark duplicates with piccard"
     module load samtools
-    
+
     java -Xmx4g -jar /cm/shared/apps/picard-tools/1.118/MarkDuplicates.jar \\
     INPUT={0} \\
     OUTPUT={1} \\
@@ -865,7 +856,7 @@ def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
         then
         rm {1}
     fi
-    
+
     """.format(inputBam, transientFile, metricsFile, tempDir, outputBam)
 
     return command
@@ -907,7 +898,7 @@ def qc():
 
 
 def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
-    transientFile = os.path.abspath(re.sub("\.bigWig" , "", outputBigWig))
+    transientFile = os.path.abspath(re.sub("\.bigWig", "", outputBigWig))
     if not tagmented:
         command = """
     # Making bigWig tracks from bam file
@@ -974,7 +965,7 @@ def linkToTrackHub(trackHubURL, fileName, genome):
         </head>
     </html>
     """.format(trackHubURL=trackHubURL, fileName=fileName, genome=genome)
-    
+
     with open(fileName, 'w') as handle:
         handle.write(textwrap.dedent(html))
 
@@ -993,7 +984,7 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, broad=False)
     else:
         command = """
     # Call peaks with MACS2
-        
+
     macs2 callpeak -B -t {0} -c {1} \\
     --broad --nomodel --extsize 200 --pvalue 1e-3 \\
     -g hs -n {2} --outdir {3}
@@ -1012,7 +1003,7 @@ def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir
     Rscript {6}/lib/spp_peak_calling.R {0} {1} {2} {3} {4} {5}
 
     """.format(treatmentBam, controlBam, treatmentName, controlName, args.cpus,
-        os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
+               os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
 
     return command
 
@@ -1025,7 +1016,7 @@ def homerFindMotifs(peakFile, genome, outputDir, size=150, length="8,10,12"):
     findMotifsGenome.pl {0} {1} {2} -mask -size {3} -len {4}
 
     """.format(peakFile, genome, outputDir, size, length)
-    
+
     return command
 
 
@@ -1066,16 +1057,16 @@ def plotCorrelations(inputBams, plotsDir, duplicates=False, windowWidth=1000, fr
 
     source ~/venv/bin/activate
 
-    python {5}/lib/correlations.py {0} {1} --window-width {2} --fragment-size {3} --genome {4} 
+    python {5}/lib/correlations.py {0} {1} --window-width {2} --fragment-size {3} --genome {4}
 
     """.format(plotsDir, " ".join(["%s"] * len(inputBams)) % tuple(inputBams),
-        windowWidth, fragmentSize, genome,
-        os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
-    )
+               windowWidth, fragmentSize, genome,
+               os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
+               )
 
     if duplicates:
         command += "--duplicates"
-    
+
     command += "\n    deactivate\n"
 
     return command

@@ -12,6 +12,9 @@ ChIP-seq pipeline
 
     UCSC track description 5prime add 5prime
 
+    Take care of additional requirements: UCSCutils, ...
+
+
     ## FURTHER TO IMPLEMENT
     check annotation sheets are right
     call footprints
@@ -923,9 +926,9 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
         command = """
     # Making bigWig tracks from bam file
     echo "making bigWig tracks from bam file"
-    #module load 
+    module load bedtools
 
-    bamToBed -i {0} | \\
+    bedtools bamtobed -i {0} | \\
     python {4}/lib/get5primePosition.py | \\
     genomeCoverageBed -i stdin -bg -g {1} > {2}.cov
 
@@ -964,7 +967,7 @@ def linkToTrackHub(trackHubURL, fileName, genome):
             <meta http-equiv="refresh" content="0; url=http://genome.ucsc.edu/cgi-bin/hgTracks?org={genome}&hgt.customText={trackHubURL}" />
         </head>
     </html>
-    """.format(trackHubURL=trackHubURL, fileName=fileName, genome=genome)
+    """.format(trackHubURL=trackHubURL, genome=genome)
 
     with open(fileName, 'w') as handle:
         handle.write(textwrap.dedent(html))
@@ -1002,7 +1005,7 @@ def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir
 
     Rscript {6}/lib/spp_peak_calling.R {0} {1} {2} {3} {4} {5}
 
-    """.format(treatmentBam, controlBam, treatmentName, controlName, args.cpus,
+    """.format(treatmentBam, controlBam, treatmentName, controlName, cpus,
                os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
 
     return command

@@ -100,7 +100,7 @@ def main():
     comparison_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
     comparison_subparser.add_argument('-s', '--stage', default="all", dest='stage',
                                       choices=["all", "callpeaks", "findmotifs", "centerpeaks",
-                                               "annotatepeaks", "footprints", "correlations"],
+                                               "annotatepeaks", "peakanalysis", "footprints", "correlations"],
                                       help='Run only these stages. Default=all.', type=str)
     comparison_subparser.add_argument('--peak-caller', default="macs2", choices=["macs2", "spp"],
                                       dest='peak_caller', help='Peak caller to use. Default=macs2.', type=str)
@@ -620,6 +620,19 @@ def comparison(args, logger):
                 outputBed=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifAnnotated.bed")
             )
 
+        if args.stage in ["all", "peakanalysis"] and control:
+            jobCode += peakAnalysis(
+                inputBam=os.path.abspath(samples.ix[sample]['filePath']),
+                peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifCentered.bed"),
+                plotsDir=os.path.join(resultsDir, 'plots'),
+                windowWidth=2000,
+                fragmentsize=1 if samples.ix[sample]['tagmented'] else 50,
+                genome=samples.ix[sample]['genome'],
+                n_clusters=5,
+                strand_specific=True,
+                duplicates=True
+            )
+
         # if args.stage in ["all", "footprints"] and control:
         #     jobCode += footprintAnalysis(
         #         os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifCentered.bed"),
@@ -1045,6 +1058,23 @@ def centerPeaksOnMotifs(peakFile, genome, windowWidth, motifFile, outputBed):
     python {4}/lib/fix_bedfile_genome_boundaries.py | \\
     sortBed > {5}
     """.format(peakFile, genome, windowWidth, motifFile, os.path.abspath(os.path.dirname(os.path.realpath(__file__))), outputBed)
+
+    return command
+
+
+def peakAnalysis(inputBam, peakFile, plotsDir, windowWidth, fragmentsize, genome, n_clusters, strand_specific, duplicates):
+    command = """
+    # Analyse peak profiles
+    echo "Analysing peak profiles"
+
+    {0}/lib/peaks_analysis.py {1} {2} {3} --window-width {4} --fragment-size {5} --genome {6} --n_clusters {7} """.format(
+        os.path.abspath(os.path.dirname(os.path.realpath(__file__))),
+        inputBam, peakFile, plotsDir, windowWidth, fragmentsize, genome, n_clusters
+    )
+    if strand_specific:
+        command += "--strand-specific "
+    if duplicates:
+        command += "--duplicates "
 
     return command
 

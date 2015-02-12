@@ -14,7 +14,6 @@ from argparse import ArgumentParser
 from collections import OrderedDict
 from rpy2.robjects.packages import importr
 from sklearn.cluster import k_means
-import collections
 import cPickle as pickle
 import HTSeq
 import matplotlib.pyplot as plt
@@ -29,7 +28,7 @@ import seaborn as sns
 import sys
 
 
-def main(args):
+def main():
     # Parse command-line arguments
     parser = ArgumentParser(description='read_distances.py',
                             usage='python read_distances.py <directory> file1, file2... '
@@ -133,7 +132,7 @@ def main(args):
         }}
     """.format(exportName, window_range[0], window_range[1], args.window_width))
 
-    gr = importr('grDevices')
+    importr('grDevices')
     # convert the pandas dataframe to an R dataframe
     robj.pandas2ri.activate()
     aveSignal_R = robj.conversion.py2ri(aveSignal)

@@ -263,14 +263,13 @@ def preprocess(args, logger):
     # Get biological replicates from technical
     logger.debug("Checking which technical replicates form biological replicates.")
     biologicalReplicates = checkTechnicalReplicates(samples)  # sorted differently than input annotation
+
     # Preprocess biological replicates
     samplesMerged = list()
     for sample in xrange(len(biologicalReplicates)):
         if len(biologicalReplicates) == 0:
             logger.error("No samples in sheet.")
             sys.exit(1)
-        if len(biologicalReplicates.values()[sample]) == 1:  # patch
-            originalBam = biologicalReplicates.values()[sample][0]["filePath"]
 
         # Get sample name
         variables = samples.columns.tolist()
@@ -288,14 +287,19 @@ def preprocess(args, logger):
                 logger.debug("No sample name provided, using concatenation of variables supplied")
         # if there's more than one technical replicate get a name
         elif len(biologicalReplicates.values()[sample]) > 1:
-            s = biologicalReplicates.values()[sample][0]
+            s = biologicalReplicates[sample][0]
             s["technicalReplicate"] = 0
             sampleName = string.join([str(s[var]) for var in variables], sep="_")
+
+        # add sample name to series
+        s = biologicalReplicates[sample][0]
+        s['sampleName'] = sampleName
 
         # get jobname
         jobName = projectName + "_" + sampleName
 
         # check if sample is tagmented or not:
+        # todo: get tagmented from technique
         tagmented = biologicalReplicates[sample][0]["tagmented"] == "yes" or biologicalReplicates[sample][0]["tagmented"] == 1
 
         if not tagmented:
@@ -304,10 +308,9 @@ def preprocess(args, logger):
             bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted")
 
         # append to list of Biological Replicates
-        s = biologicalReplicates[sample][0]
-        s['sampleName'] = sampleName
-        s['filePath'] = bam + ".dups.bam"
-        samplesMerged.append(s)
+        toAppend = s.copy()
+        toAppend['filePath'] = bam + ".dups.bam"  # bam file of merged sample if several technical replicates
+        samplesMerged.append(toAppend)
 
         # keep track of temporary files
         tempFiles = list()
@@ -335,7 +338,7 @@ def preprocess(args, logger):
             if args.stage in ["all", "bam2fastq"]:
                 if len(biologicalReplicates.values()[sample]) == 1:
                     jobCode += bam2fastq(
-                        inputBam=originalBam,
+                        inputBam=biologicalReplicates.values()[sample][0]["filePath"],
                         outputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq")
                     )
                 elif len(biologicalReplicates.values()[sample]) >= 1:

@@ -188,6 +188,20 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
     for d in dirs:
         if not os.path.exists(d):
             os.makedirs(d)
+
+    # chmod of paths to public_html folder
+    html = [
+        htmlDir,
+        os.path.join(args.html_root, args.project_name),
+        os.path.join(args.html_root, args.project_name, "bigWig")
+    ]
+    for d in html:
+        try:
+            os.chmod(d, 0755)
+        except OSError:
+            logger.error("cannot change folder's mode: %s" % d)
+            continue
+
     htmlDir = os.path.join(args.html_root, args.project_name, "bigWig")
     urlRoot = args.url_root + args.project_name + "/bigWig/"
 

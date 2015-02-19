@@ -925,6 +925,7 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
     module load bedtools
 
     bedtools bamtobed -i {0} | \\
+    bedtools slop -i stdin -g {1} -s -l 0 -r 130 | \\
     genomeCoverageBed -i stdin -bg -g {1} > {2}.cov
 
     bedGraphToBigWig {2}.cov {1} {3}

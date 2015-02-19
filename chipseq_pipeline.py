@@ -411,6 +411,7 @@ def preprocess(args, logger):
                 inputBam=bam + ".dups.bam",
                 outputBigWig=os.path.join(htmlDir, sampleName + ".bigWig"),
                 genomeSizes=genomeSizes[samples["genome"][sample]],
+                genome=samples["genome"][sample],
                 tagmented=False
             )
             jobCode += addTrackToHub(
@@ -423,6 +424,7 @@ def preprocess(args, logger):
                     inputBam=bam + ".dups.bam",
                     outputBigWig=os.path.join(htmlDir, sampleName + ".5prime.bigWig"),
                     genomeSizes=genomeSizes[samples["genome"][sample]],
+                    genome=samples["genome"][sample],
                     tagmented=True
                 )
                 jobCode += addTrackToHub(
@@ -916,7 +918,7 @@ def qc():
     raise NotImplementedError("Function not implemented yet.")
 
 
-def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
+def bamToUCSC(inputBam, outputBigWig, genomeSizes, genome, tagmented=False):
     transientFile = os.path.abspath(re.sub("\.bigWig", "", outputBigWig))
     if not tagmented:
         command = """
@@ -926,6 +928,7 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
 
     bedtools bamtobed -i {0} | \\
     bedtools slop -i stdin -g {1} -s -l 0 -r 130 | \\
+    python {5}/lib/fix_bedfile_genome_boundaries.py {4} | \\
     genomeCoverageBed -i stdin -bg -g {1} > {2}.cov
 
     bedGraphToBigWig {2}.cov {1} {3}
@@ -938,7 +941,8 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, tagmented=False):
 
     chmod 755 {3}
 
-    """.format(inputBam, genomeSizes, transientFile, outputBigWig)
+    """.format(inputBam, genomeSizes, transientFile, outputBigWig, genome,
+        os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
     else:
         command = """
     # Making bigWig tracks from bam file
@@ -1059,7 +1063,7 @@ def centerPeaksOnMotifs(peakFile, genome, windowWidth, motifFile, outputBed):
 
     annotatePeaks.pl {0} {1} -size {2} -center {3} | \\
     awk -v OFS='\\t' '{{print $2, $3, $4, $1, $6, $5}}' | \\
-    python {4}/lib/fix_bedfile_genome_boundaries.py | \\
+    python {4}/lib/fix_bedfile_genome_boundaries.py {1} | \\
     sortBed > {5}
     """.format(peakFile, genome, windowWidth, motifFile, os.path.abspath(os.path.dirname(os.path.realpath(__file__))), outputBed)
 

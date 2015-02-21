@@ -11,8 +11,6 @@ ChIP-seq pipeline
 
 
     ## FURTHER TO IMPLEMENT
-    check annotation sheets are right
-    call footprints
     copy original sample annotation file to projectDir
     merge biological replicates, process again
     Rscript macs2_model.r
@@ -95,7 +93,7 @@ def main():
     comparison_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
     comparison_subparser.add_argument('-s', '--stage', default="all", dest='stage',
                                       choices=["all", "callpeaks", "findmotifs", "centerpeaks",
-                                               "annotatepeaks", "peakanalysis", "footprints", "correlations"],
+                                               "annotatepeaks", "peakanalysis", "tssanalysis", "footprints", "correlations"],
                                       help='Run only these stages. Default=all.', type=str)
     comparison_subparser.add_argument('--peak-caller', default="macs2", choices=["macs2", "spp"],
                                       dest='peak_caller', help='Peak caller to use. Default=macs2.', type=str)
@@ -587,48 +585,28 @@ def comparison(args, logger):
                 if not os.path.exists(os.path.join(dataDir, "peaks", sampleName)):
                     os.makedirs(os.path.join(dataDir, "peaks", sampleName))
 
-                if samples["ip"][sample].lower() not in broadFactors:
-                    # For point-source factors use default settings
-                    jobCode += macs2CallPeaks(
-                        treatmentBam=os.path.abspath(samples['filePath'][sample]),
-                        controlBam=os.path.abspath(samples['filePath'][controlIdx]),
-                        outputDir=os.path.join(dataDir, "peaks", sampleName),
-                        sampleName=sampleName,
-                        genome=samples['genome'][sample]
-                        broad=False
-                    )
-                else:
-                    # For broad factors use broad settings
-                    jobCode += macs2CallPeaks(
-                        treatmentBam=os.path.abspath(samples['filePath'][sample]),
-                        controlBam=os.path.abspath(samples['filePath'][controlIdx]),
-                        outputDir=os.path.join(dataDir, "peaks", sampleName),
-                        sampleName=sampleName,
-                        genome=samples['genome'][sample]
-                        broad=True
-                    )
+                # For point-source factors use default settings
+                # For broad factors use broad settings
+                jobCode += macs2CallPeaks(
+                    treatmentBam=os.path.abspath(samples['filePath'][sample]),
+                    controlBam=os.path.abspath(samples['filePath'][controlIdx]),
+                    outputDir=os.path.join(dataDir, "peaks", sampleName),
+                    sampleName=sampleName,
+                    genome=samples['genome'][sample],
+                    broad=False if samples["ip"][sample].lower() not in broadFactors else True
+                )   
             elif args.peak_caller == "spp":
-                if samples["ip"][sample].lower() not in broadFactors:
-                    # For point-source factors use default settings
-                    jobCode += sppCallPeaks(
-                        treatmentBam=os.path.abspath(samples['filePath'][sample]),
-                        controlBam=os.path.abspath(samples['filePath'][controlIdx]),
-                        treatmentName=sampleName,
-                        controlName=controlName,
-                        outputDir=os.path.join(dataDir, "peaks", sampleName),
-                        broad=False,
-                        cpus=args.cpus
-                    )
-                else:
-                    jobCode += sppCallPeaks(
-                        treatmentBam=os.path.abspath(samples['filePath'][sample]),
-                        controlBam=os.path.abspath(samples['filePath'][controlIdx]),
-                        treatmentName=sampleName,
-                        controlName=controlName,
-                        outputDir=os.path.join(dataDir, "peaks", sampleName),
-                        broad=True,
-                        cpus=args.cpus
-                    )
+                # For point-source factors use default settings
+                # For broad factors use broad settings
+                jobCode += sppCallPeaks(
+                    treatmentBam=os.path.abspath(samples['filePath'][sample]),
+                    controlBam=os.path.abspath(samples['filePath'][controlIdx]),
+                    treatmentName=sampleName,
+                    controlName=controlName,
+                    outputDir=os.path.join(dataDir, "peaks", sampleName),
+                    broad=False if samples["ip"][sample].lower() not in broadFactors else True,
+                    cpus=args.cpus
+                )
 
         if args.stage in ["all", "findmotifs"] and control:
             if not os.path.exists(os.path.join(dataDir, "motifs", sampleName)):

@@ -403,8 +403,8 @@ def preprocess(args, logger):
             jobCode += markDuplicates(
                 inputBam=bam + ".bam",
                 outputBam=bam + ".dups.bam",
-                metricsFile=os.path.join(resultsDir, sampleName + ".duplicates.txt")#,
-                #tempDir=
+                metricsFile=os.path.join(resultsDir, sampleName + ".duplicates.txt")  #
+                # tempDir=
             )
         if args.stage in ["all", "removeduplicates"]:
             jobCode += removeDuplicates(
@@ -508,6 +508,7 @@ def comparison(args, logger):
     # Paths to static files on the cluster
 
     # Other static info
+    histones = ["H2A", "H2B", "H3", "H4"]
     broadFactors = ["H3K27me3", "H3K36me3", "H3K9me3"]
 
     # Parse sample information
@@ -549,7 +550,7 @@ def comparison(args, logger):
         control = False
         if not np.isnan(samples.ix[sample]["controlSampleNumber"]):
             control = True
-            controlIdx = int(samples.ix[sample]["controlSampleNumber"]) - 1
+            controlIdx = int(samples.ix[sample]["controlSampleNumber"]) - 1  # zero-based
 
             # if sampleName is not provided, use a concatenation of several variable (excluding longest)
             if str(samples["sampleName"][controlIdx]) != "nan":
@@ -557,6 +558,9 @@ def comparison(args, logger):
             else:
                 controlName = string.join([str(samples[var][controlIdx]) for var in variables], sep="_")
                 logger.debug("No sample name provided, using concatenation of variables supplied")
+
+        # Is it a histone?
+        histone = True if any([i in samples["ip"][sample] for i in histones]) else False
 
         jobName = projectName + "_" + sampleName
 
@@ -587,12 +591,13 @@ def comparison(args, logger):
                         broad=False
                     )
                 else:
-                    jobCode += macs2CallPeaks(treatmentBam=os.path.abspath(samples.ix[sample]['filePath']),
-                                              controlBam=os.path.abspath(samples.ix[controlIdx]['filePath']),
-                                              outputDir=os.path.join(dataDir, "peaks", sampleName),
-                                              sampleName=sampleName,
-                                              broad=True
-                                              )
+                    jobCode += macs2CallPeaks(
+                        treatmentBam=os.path.abspath(samples.ix[sample]['filePath']),
+                        controlBam=os.path.abspath(samples.ix[controlIdx]['filePath']),
+                        outputDir=os.path.join(dataDir, "peaks", sampleName),
+                        sampleName=sampleName,
+                        broad=True
+                    )
             elif args.peak_caller == "spp":
                 jobCode += sppCallPeaks(
                     treatmentBam=os.path.abspath(samples.ix[sample]['filePath']),
@@ -606,13 +611,36 @@ def comparison(args, logger):
         if args.stage in ["all", "findmotifs"] and control:
             if not os.path.exists(os.path.join(dataDir, "motifs", sampleName)):
                     os.makedirs(os.path.join(dataDir, "motifs", sampleName))
-
-            jobCode += homerFindMotifs(peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
-                                       genome=samples["genome"][sample],
-                                       outputDir=os.path.join(dataDir, "motifs", sampleName),
-                                       size="150",
-                                       length="8,10,12"
-                                       )
+            histone = True
+            if not histone:
+                # For TFs, find the "self" motif
+                jobCode += homerFindMotifs(
+                    peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
+                    genome=samples["genome"][sample],
+                    outputDir=os.path.join(dataDir, "motifs", sampleName),
+                    size="50",
+                    length="8,10,12,14,16",
+                    n_motifs=12
+                )
+                # For TFs, find co-binding motifs (broader region)
+                jobCode += homerFindMotifs(
+                    peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
+                    genome=samples["genome"][sample],
+                    outputDir=os.path.join(dataDir, "motifs", sampleName + "_cobinders"),
+                    size="200",
+                    length="8,10,12,14,16",
+                    n_motifs=12
+                )
+            else:
+                # For histones, use a broad region to find motifs
+                jobCode += homerFindMotifs(
+                    peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
+                    genome=samples["genome"][sample],
+                    outputDir=os.path.join(dataDir, "motifs", sampleName),
+                    size="1000",
+                    length="8,10,12,14,16",
+                    n_motifs=20
+                )
 
         if args.stage in ["all", "centerpeaks"] and control:
             # TODO:
@@ -645,7 +673,7 @@ def comparison(args, logger):
                 peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifCentered.bed"),
                 plotsDir=os.path.join(resultsDir, 'plots'),
                 windowWidth=2000,
-                fragmentsize=1 if samples.ix[sample]['tagmented'] else 50,
+                fragmentsize=1 if samples.ix[sample]['tagmented'] else 50,  # change this to actual read length
                 genome=samples.ix[sample]['genome'],
                 n_clusters=5,
                 strand_specific=True,
@@ -1046,14 +1074,14 @@ def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir
     return command
 
 
-def homerFindMotifs(peakFile, genome, outputDir, size=150, length="8,10,12"):
+def homerFindMotifs(peakFile, genome, outputDir, size=150, length="8,10,12,14,16", n_motifs=12):
     command = """
     # Find motifs with Homer
     echo "finding motifs with Homer"
 
-    findMotifsGenome.pl {0} {1} {2} -mask -size {3} -len {4}
+    findMotifsGenome.pl {0} {1} {2} -mask -size {3} -len {4} -S {5}
 
-    """.format(peakFile, genome, outputDir, size, length)
+    """.format(peakFile, genome, outputDir, size, length, n_motifs)
 
     return command
 
@@ -1089,7 +1117,13 @@ def peakAnalysis(inputBam, peakFile, plotsDir, windowWidth, fragmentsize, genome
     # Analyse peak profiles
     echo "Analysing peak profiles"
 
-    {0}/lib/peaks_analysis.py {1} {2} {3} --window-width {4} --fragment-size {5} --genome {6} --n_clusters {7} """.format(
+    python {0}/lib/peaks_analysis.py {1} \\
+    {2} \\
+    {3} \\
+    --window-width {4} \\
+    --fragment-size {5} \\
+    --genome {6} \\
+    --n_clusters {7} """.format(
         os.path.abspath(os.path.dirname(os.path.realpath(__file__))),
         inputBam, peakFile, plotsDir, windowWidth, fragmentsize, genome, n_clusters
     )
@@ -1112,7 +1146,11 @@ def plotCorrelations(inputBams, plotsDir, duplicates=False, windowWidth=1000, fr
 
     source ~/venv/bin/activate
 
-    python {5}/lib/correlations.py {0} {1} --window-width {2} --fragment-size {3} --genome {4}
+    python {5}/lib/correlations.py {0} \\
+    {1} \\
+    --window-width {2} \\
+    --fragment-size {3} \\
+    --genome {4}
 
     """.format(plotsDir, " ".join(["%s"] * len(inputBams)) % tuple(inputBams),
                windowWidth, fragmentSize, genome,

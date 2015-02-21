@@ -1,4 +1,5 @@
 #!/usr/env python
+
 #############################################################################################
 #
 # This code produces plots of average signal and heatmaps around motifs under peaks.
@@ -30,8 +31,8 @@ import sys
 
 def main():
     # Parse command-line arguments
-    parser = ArgumentParser(description='read_distances.py',
-                            usage='python read_distances.py <directory> file1, file2... '
+    parser = ArgumentParser(description='peak_analysis.py',
+                            usage='python peak_analysis.py <directory> file1, file2... '
                             )
     # Global options
     # positional arguments
@@ -46,13 +47,6 @@ def main():
     parser.add_argument('--genome', dest='genome', type=str, default='hg19')
     parser.add_argument('--n_clusters', dest='n_clusters', type=int, default=5)
     args = parser.parse_args()
-
-    args = parser.parse_args([
-        "/fhgfs/groups/lab_bock/shared/projects/chipmentation/data/mapped/K562_10mio_ChIP_GATA2_nan_nan_CM22-6_1_1.trimmed.bowtie2.dups.bam",
-        "/fhgfs/groups/lab_bock/shared/projects/chipmentation/data/peaks/K562_10mio_ChIP_GATA2_nan_nan_CM22-6_1_1/K562_10mio_ChIP_GATA2_nan_nan_CM22-6_1_1_peaks.motifCentered.bed",
-        "/fhgfs/groups/lab_bock/shared/projects/chipmentation/results/plots/",
-        "--strand-specific"
-        ])
 
     sample_name = re.sub("\..*", "", re.sub("\.bam", "", os.path.basename(args.bam_file)))
     exportName = os.path.join(args.plots_dir, sample_name + "_coverage_%ibp" % args.window_width)
@@ -87,7 +81,7 @@ def main():
     pickle.dump(df, open(exportName + ".pickle", 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
 
     # Compute averages
-    aveSignal = pd.DataFrame({"x" : list(df.columns),                                            # x axis
+    aveSignal = pd.DataFrame({"x": list(df.columns),                                            # x axis
                               "average": df.apply(np.mean, axis=0),                              # both strands
                               "positive": df.ix[range(0, len(df), 2)].apply(np.mean, axis=0),    # positive strand
                               "negative": df.ix[range(1, len(df), 2)].apply(np.mean, axis=0)     # negative strand
@@ -97,7 +91,7 @@ def main():
     aveSignal = pd.melt(aveSignal, id_vars=["x"])
 
     plotFunc = robj.r("""
-        library(ggplot2)
+        suppressPackageStartupMessages(library(ggplot2))
 
         function(df){{
             p = ggplot(df, aes(x, value, colour = variable)) +
@@ -144,11 +138,14 @@ def main():
     df = df.xs('+', level="strand") + df.xs('-', level="strand")
 
     # Export as cdt
-    exportToJavaTreeView(df, exportName + "_%i_kmeans_clusters.cdt" % args.n_clusters)
+    exportToJavaTreeView(df.copy(), exportName + "_%i_kmeans_clusters.cdt" % args.n_clusters)
 
     # scale row signal to 0:1 (normalization)
-    dfNorm = df.apply(lambda x : (x - min(x)) / (max(x) - min(x)), axis=1)
+    dfNorm = df.apply(lambda x: (x - min(x)) / (max(x) - min(x)), axis=1)
 
+    # TODO:
+    # replace with mini-batch k-means (usefull for samples > 10k)
+    # http://scikit-learn.org/stable/modules/generated/sklearn.cluster.MiniBatchKMeans.html#sklearn.cluster.MiniBatchKMeans
     clust = k_means(dfNorm,
                     args.n_clusters,
                     n_init=25,
@@ -173,7 +170,7 @@ def main():
     fig.savefig(exportName + "_%i_kmeans_clusters.pdf" % args.n_clusters)
 
     # Export as cdt
-    exportToJavaTreeView(dfNorm, exportName + "_%i_kmeans_clusters.normalized_clustered.cdt" % args.n_clusters)
+    exportToJavaTreeView(dfNorm.copy(), exportName + "_%i_kmeans_clusters.normalized_clustered.cdt" % args.n_clusters)
 
 
 def bedToolsInterval2GenomicInterval(bedtool):

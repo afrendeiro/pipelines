@@ -8,7 +8,8 @@ input = args[2]
 sample_name = args[3]
 input_name = args[4]
 outputDir = args[5]
-nCPUs = args[6]
+broad_peaks = args[6]
+nCPUs = args[7]
 
 # The following section shows how to initialize a cluster of 8 nodes for parallel processing
 # see "snow" package manual for details.
@@ -63,10 +64,11 @@ input.data <- remove.local.tag.anomalies(input.data);
 #writewig(enrichment.estimates,"example.enrichment.estimates.wig","Example conservative fold-enrichment/depletion estimates shown on log2 scale");
 #rm(enrichment.estimates);
 
-broad.clusters <- get.broad.enrichment.clusters(chip.data,input.data,window.size=1e3,z.thr=3,tag.shift=round(binding.characteristics$peak$x/2))
-# write out in broadPeak format
-write.broadpeak.info(broad.clusters, paste0(dataDir, "/spp_peaks/", sample_name, ".broadPeak"))
-
+if (broad_peaks){
+    broad.clusters <- get.broad.enrichment.clusters(chip.data,input.data,window.size=1e3,z.thr=3,tag.shift=round(binding.characteristics$peak$x/2))
+    # write out in broadPeak format
+    write.broadpeak.info(broad.clusters, paste0(dataDir, "/spp_peaks/", sample_name, ".broadPeak"))
+}
 
 
 # binding detection parameters
@@ -87,11 +89,11 @@ bp <- find.binding.positions(signal.data=chip.data,control.data=input.data,fdr=f
 # output narrowPeaks
 write.narrowpeak.binding(bp, paste0(dataDir, "/", sample_name, ".narrowPeak", sep = ""))
 
-
-bp <- add.broad.peak.regions(chip.data,input.data,bp,window.size=1000,z.thr=3)
-# output narrowPeaks and broad peaks toghether
-write.narrowpeak.binding(bp, paste0(dataDir, "/", sample_name, ".narrow+BroadPeak"))
-
+if (broad_peaks){
+    bp <- add.broad.peak.regions(chip.data,input.data,bp,window.size=1000,z.thr=3)
+    # output narrowPeaks and broad peaks toghether
+    write.narrowpeak.binding(bp, paste0(dataDir, "/", sample_name, ".narrow+BroadPeak"))
+}
 
 
 # determine MSER

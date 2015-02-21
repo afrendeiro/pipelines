@@ -6,11 +6,6 @@ ChIP-seq pipeline
     ## BUGS
     Keep track of original bam file location (1 technical replicate)
     Info "exiting" after copying log
-    chmod 755 parent bigWig folder
-
-    UCSC link for mouse is: http://genome.ucsc.edu/cgi-bin/hgTracks?db=mm10&hgt.customText=
-
-    UCSC track description 5prime add 5prime
 
     Take care of additional requirements: UCSCutils, ...
 
@@ -509,7 +504,11 @@ def comparison(args, logger):
 
     # Other static info
     histones = ["H2A", "H2B", "H3", "H4"]
-    broadFactors = ["H3K27me3", "H3K36me3", "H3K9me3"]
+    broadFactors = ["H3K27me1", "H3K27me2", "H3K27me3",
+                    "H3K36me1", "H3K36me2", "H3K36me3",
+                    "H3K9me1", "H3K9me2", "H3K9me3",
+                    "H3K72me1", "H3K72me2", "H3K72me3"
+    ]
 
     tssFiles = {
         "hg19": "/fhgfs/groups/lab_bock/arendeiro/share/GRCh37_hg19_refSeq.tss.bed",
@@ -588,31 +587,48 @@ def comparison(args, logger):
                 if not os.path.exists(os.path.join(dataDir, "peaks", sampleName)):
                     os.makedirs(os.path.join(dataDir, "peaks", sampleName))
 
-                if samples["ip"][sample] not in broadFactors:
+                if samples["ip"][sample].lower() not in broadFactors:
+                    # For point-source factors use default settings
                     jobCode += macs2CallPeaks(
-                        treatmentBam=os.path.abspath(samples.ix[sample]['filePath']),
-                        controlBam=os.path.abspath(samples.ix[controlIdx]['filePath']),
+                        treatmentBam=os.path.abspath(samples['filePath'][sample]),
+                        controlBam=os.path.abspath(samples['filePath'][controlIdx]),
                         outputDir=os.path.join(dataDir, "peaks", sampleName),
                         sampleName=sampleName,
+                        genome=samples['genome'][sample]
                         broad=False
                     )
                 else:
+                    # For broad factors use broad settings
                     jobCode += macs2CallPeaks(
-                        treatmentBam=os.path.abspath(samples.ix[sample]['filePath']),
-                        controlBam=os.path.abspath(samples.ix[controlIdx]['filePath']),
+                        treatmentBam=os.path.abspath(samples['filePath'][sample]),
+                        controlBam=os.path.abspath(samples['filePath'][controlIdx]),
                         outputDir=os.path.join(dataDir, "peaks", sampleName),
                         sampleName=sampleName,
+                        genome=samples['genome'][sample]
                         broad=True
                     )
             elif args.peak_caller == "spp":
-                jobCode += sppCallPeaks(
-                    treatmentBam=os.path.abspath(samples.ix[sample]['filePath']),
-                    controlBam=os.path.abspath(samples.ix[controlIdx]['filePath']),
-                    treatmentName=sampleName,
-                    controlName=controlName,
-                    outputDir=os.path.join(dataDir, "peaks", sampleName),
-                    cpus=args.cpus
-                )
+                if samples["ip"][sample].lower() not in broadFactors:
+                    # For point-source factors use default settings
+                    jobCode += sppCallPeaks(
+                        treatmentBam=os.path.abspath(samples['filePath'][sample]),
+                        controlBam=os.path.abspath(samples['filePath'][controlIdx]),
+                        treatmentName=sampleName,
+                        controlName=controlName,
+                        outputDir=os.path.join(dataDir, "peaks", sampleName),
+                        broad=False,
+                        cpus=args.cpus
+                    )
+                else:
+                    jobCode += sppCallPeaks(
+                        treatmentBam=os.path.abspath(samples['filePath'][sample]),
+                        controlBam=os.path.abspath(samples['filePath'][controlIdx]),
+                        treatmentName=sampleName,
+                        controlName=controlName,
+                        outputDir=os.path.join(dataDir, "peaks", sampleName),
+                        broad=True,
+                        cpus=args.cpus
+                    )
 
         if args.stage in ["all", "findmotifs"] and control:
             if not os.path.exists(os.path.join(dataDir, "motifs", sampleName)):
@@ -1058,39 +1074,54 @@ def linkToTrackHub(trackHubURL, fileName, genome):
         handle.write(textwrap.dedent(html))
 
 
-def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, broad=False):
+def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broad=False):
     if not broad:
         command = """
-    # Calling peaks with MACS2
-    echo "calling peaks with MACS2"
+    # Call peaks with MACS2
+    echo "Calling peaks with MACS2"
 
-    macs2 callpeak -t {0} -c {1} \\
-    --bw 200 \\
-    -g hs -n {2} --outdir {3}
+    macs2 callpeak \\
+    -t {0} \\
+    -c {1} \\
+    --bw 180 \\
+    -g {2} -n {3} --outdir {4}
 
-    """.format(treatmentBam, controlBam, sampleName, outputDir)
+    """.format(treatmentBam, controlBam, genome, sampleName, outputDir)
     else:
+        # Parameter setting for broad factors according to Nature Protocols (2012)
+        # Vol.7 No.9 1728-1740 doi:10.1038/nprot.2012.101 Protocol (D) for H3K36me3
         command = """
     # Call peaks with MACS2
+    echo "Calling peaks with MACS2"
 
-    macs2 callpeak -B -t {0} -c {1} \\
-    --broad --nomodel --extsize 200 --pvalue 1e-3 \\
-    -g hs -n {2} --outdir {3}
+    macs2 callpeak \\
+    -t {0} \\
+    -c {1} \\
+    --broad --nomodel --extsize 73 --pvalue 1e-3 \\
+    -g {2} -n {3} --outdir {4}
 
-    """.format(treatmentBam, controlBam, sampleName, outputDir)
+    """.format(treatmentBam, controlBam, genome, sampleName, outputDir)
 
     return command
 
 
-def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir, cpus):
+def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir, broad, cpus):
+    broad = "TRUE" if broad else "FALSE"
     command = """
     # Calling peaks with SPP
     echo "calling peaks with SPP"
     module load R
 
-    Rscript {6}/lib/spp_peak_calling.R {0} {1} {2} {3} {4} {5}
+    Rscript {6}/lib/spp_peak_calling.R \\
+    {0} \\
+    {1} \\
+    {2} \\
+    {3} \\
+    {4} \\
+    {5} \\
+    {6}
 
-    """.format(treatmentBam, controlBam, treatmentName, controlName, cpus,
+    """.format(treatmentBam, controlBam, treatmentName, controlName, broad, cpus,
                os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
 
     return command

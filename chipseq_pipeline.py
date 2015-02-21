@@ -449,9 +449,9 @@ def preprocess(args, logger):
                 )
             # TODO: separate this per genome
             linkToTrackHub(
-                trackHubURL="{0}/{1}/bigWig/trackHub.txt".format(args.url_root, args.project_name),
-                fileName=os.path.join(projectDir, "ucsc_tracks.html"),
-                genome='human'
+                trackHubURL="{0}/{1}/bigWig/trackHub_{2}.txt".format(args.url_root, args.project_name, samples["genome"][sample]),
+                fileName=os.path.join(projectDir, "ucsc_tracks_{0}.html".format(samples["genome"][sample])),
+                genome=samples["genome"][sample]
             )
 
         # if args.stage in ["all", "qc"]:
@@ -1024,13 +1024,16 @@ def addTrackToHub(sampleName, trackURL, trackHub, fivePrime=""):
 
 
 def linkToTrackHub(trackHubURL, fileName, genome):
+    db = "org" if genome == "hg19" else "db"  # different database call for human
+    genome = "human" if genome == "hg19" else genome  # change hg19 to human
+
     html = """
     <html>
         <head>
-            <meta http-equiv="refresh" content="0; url=http://genome.ucsc.edu/cgi-bin/hgTracks?org={genome}&hgt.customText={trackHubURL}" />
+            <meta http-equiv="refresh" content="0; url=http://genome.ucsc.edu/cgi-bin/hgTracks?{db}={genome}&hgt.customText={trackHubURL}" />
         </head>
     </html>
-    """.format(trackHubURL=trackHubURL, genome=genome)
+    """.format(trackHubURL=trackHubURL, genome=genome, db=db)
 
     with open(fileName, 'w') as handle:
         handle.write(textwrap.dedent(html))

@@ -248,9 +248,9 @@ def preprocess(args, logger):
         "dr7": os.path.join(genomeFolder, "dr7/forBowtie2/dr7")
     }
     genomeSizes = {
-        "hg19": os.path.join(genomeFolder, "hg19/hg19_chromlengths.txt"),
-        "mm10": "/home/arendeiro/mm10.chrom.sizes",
-        "dr7": "/home/arendeiro/danRer7.chrom.sizes"
+        "hg19": "/fhgfs/groups/lab_bock/arendeiro/share/hg19.chrom.sizes",
+        "mm10": "/fhgfs/groups/lab_bock/arendeiro/share/mm10.chrom.sizes",
+        "dr7": "/fhgfs/groups/lab_bock/arendeiro/share/danRer7.chrom.sizes"
     }
     adapterFasta = "/fhgfs/groups/lab_bock/shared/chipmentation.fa"
 
@@ -511,6 +511,12 @@ def comparison(args, logger):
     histones = ["H2A", "H2B", "H3", "H4"]
     broadFactors = ["H3K27me3", "H3K36me3", "H3K9me3"]
 
+    tssFiles = {
+        "hg19": "/fhgfs/groups/lab_bock/arendeiro/share/GRCh37_hg19_refSeq.tss.bed",
+        "mm10": "/fhgfs/groups/lab_bock/arendeiro/share/GRCm38_mm10_refSeq.tss.bed",
+        "dr7": "/fhgfs/groups/lab_bock/arendeiro/share/GRCh37_hg19_refSeq.tss.bed"
+    }
+
     # Parse sample information
     args.csv = os.path.abspath(args.csv)
 
@@ -671,6 +677,19 @@ def comparison(args, logger):
             jobCode += peakAnalysis(
                 inputBam=os.path.abspath(samples.ix[sample]['filePath']),
                 peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifCentered.bed"),
+                plotsDir=os.path.join(resultsDir, 'plots'),
+                windowWidth=2000,
+                fragmentsize=1 if samples.ix[sample]['tagmented'] else 50,  # change this to actual read length
+                genome=samples.ix[sample]['genome'],
+                n_clusters=5,
+                strand_specific=True,
+                duplicates=True
+            )
+
+        if args.stage in ["all", "tssanalysis"] and control:
+            jobCode += tssAnalysis(
+                inputBam=os.path.abspath(samples.ix[sample]['filePath']),
+                tssFile=tssFiles[samples.ix[sample]['genome']],
                 plotsDir=os.path.join(resultsDir, 'plots'),
                 windowWidth=2000,
                 fragmentsize=1 if samples.ix[sample]['tagmented'] else 50,  # change this to actual read length
@@ -1129,6 +1148,29 @@ def peakAnalysis(inputBam, peakFile, plotsDir, windowWidth, fragmentsize, genome
     --n_clusters {7} """.format(
         os.path.abspath(os.path.dirname(os.path.realpath(__file__))),
         inputBam, peakFile, plotsDir, windowWidth, fragmentsize, genome, n_clusters
+    )
+    if strand_specific:
+        command += "--strand-specific "
+    if duplicates:
+        command += "--duplicates "
+
+    return command
+
+
+def tssAnalysis(inputBam, tssFile, plotsDir, windowWidth, fragmentsize, genome, n_clusters, strand_specific, duplicates):
+    command = """
+    # Analyse peak profiles
+    echo "Analysing peak profiles"
+
+    python {0}/lib/tss_analysis.py {1} \\
+    {2} \\
+    {3} \\
+    --window-width {4} \\
+    --fragment-size {5} \\
+    --genome {6} \\
+    --n_clusters {7} """.format(
+        os.path.abspath(os.path.dirname(os.path.realpath(__file__))),
+        inputBam, tssFile, plotsDir, windowWidth, fragmentsize, genome, n_clusters
     )
     if strand_specific:
         command += "--strand-specific "

@@ -765,6 +765,46 @@ def comparison(args, logger):
         jobCode += slurmFooter()
         jobs[jobName] = jobCode
 
+    # diffBind
+    if args.stage in ["all", "diffbind"]:
+
+        # Submit separate jobs for each genome
+        genome_groups = samples.groupby(["genome"]).groups
+
+        for genome in genome_groups.keys():
+
+            # Separate comparison per IPed factor
+            df = samples.ix[genome_groups[genome]]
+            IP_groups = df.groupby(["ip"]).groups
+
+            for IP in IP_groups.keys():
+                if IP.upper() in ["INPUT", "IGG"]:  # skip groups with control
+                    continue
+
+                jobName = projectName + "_" + "diffBind_sheet_{0}_{1}".format(genome, IP)
+                diffBindSheetFile = os.path.join(projectDir, "runs", jobName + ".csv")
+
+                # make diffBind csv file, save it
+                makeDiffBindSheet(samples, samples.ix[IP_groups[IP]], diffBindSheetFile)
+
+                # create job
+                jobCode = slurmHeader(
+                    jobName=jobName,
+                    output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
+                    queue=args.queue,
+                    time=args.time,
+                    cpusPerTask=args.cpus,
+                    memPerCpu=args.mem,
+                    userMail=args.user_mail
+                )
+                jobCode += diffBind(
+                    inputCSV=diffBindSheetFile,
+                    jobName=jobName,
+                    plotsDir=os.path.join(resultsDir, 'plots')
+                )
+                jobCode += slurmFooter()
+                jobs[jobName] = jobCode
+
     # Submit jobs to slurm
     for jobName, jobCode in jobs.items():
         # Output file name
@@ -788,6 +828,26 @@ def comparison(args, logger):
     return (logger,
             os.path.join(os.getcwd(), args.project_name + ".log"),
             os.path.join(projectDir, "runs", args.project_name + ".log"))
+
+
+def makeDiffBindSheet(samples, df, sheetFile):
+    """
+    Prepares and saves a diffBind annotation sheet from a pandas.DataFrame annotation with standard columns.
+    """
+    for col in ["numberCells", "technique", "treatment", "patient"]:
+        df[col] = df[col].apply(str)
+    df["condition"] = df["numberCells"] + "_" + df["technique"]
+    df["treatment"] = df["treatment"] + "_" + df["patient"]
+    df["ControlID"] = list(samples["sampleName"][list(df["controlSampleNumber"] - 1)])
+    df["bamControl"] = list(samples["filePath"][list(df["controlSampleNumber"] - 1)])
+    df["Peaks"] = [os.path.join(args.dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak") for sampleName in df["sampleName"]]
+    df["PeakCaller"] = "macs"
+    df = df[["sampleName", "cellLine", "ip", "condition", "treatment",
+             "biologicalReplicate", "filePath", "ControlID", "bamControl", "Peaks", "PeakCaller"]]
+    df.columns = ["SampleID", "Tissue", "Factor", "Condition",  "Treatment",
+                  "Replicate", "bamReads", "ControlID", "bamControl", "Peaks", "PeakCaller"]
+    # save as csv
+    df.to_csv(sheetFile, index=False)  # check if format complies
 
 
 def slurmHeader(jobName, output, queue="shortq", ntasks=1, time="10:00:00",
@@ -1265,6 +1325,22 @@ def plotCorrelations(inputBams, plotsDir, duplicates=False,
         command += "--duplicates"
 
     command += "\n    deactivate\n"
+
+    return command
+
+
+def diffBind(inputCSV, jobName, plotsDir):
+    command = """
+    # Detect differential binding with diffBind
+    echo "Detecting differential binding with diffBind"
+    module load R
+
+    Rscript {2}/lib/diffBind_analysis.R \\
+    {0} \\
+    {1} \\
+
+    """.format(inputCSV, plotsDir,
+               os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
 
     return command
 

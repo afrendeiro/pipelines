@@ -4,11 +4,7 @@
 ChIP-seq pipeline
 
     ## BUGS
-    Keep track of original bam file location (1 technical replicate)
-    Info "exiting" after copying log
-
     Take care of additional requirements: UCSCutils, ...
-
 
     ## FURTHER TO IMPLEMENT
     copy original sample annotation file to projectDir
@@ -131,13 +127,17 @@ def main():
 
     # Start main function
     if args.command == "preprocess":
-        preprocess(args, logger)
+        logger, fr, to = preprocess(args, logger)
     elif args.command == "comparison":
-        comparison(args, logger)
+        logger, fr, to = comparison(args, logger)
 
     # Exit
     logger.info("Finished and exiting.")
-    sys.exit(0)
+
+    # Copy log to projectDir
+    shutil.copy2(fr, to)
+
+    sys.exit(1)
 
 
 def checkProjectDirs(args, logger):
@@ -512,12 +512,11 @@ def preprocess(args, logger):
     df["controlSampleNumber"] = None
     df.to_csv(os.path.join(projectDir, args.project_name + ".biol_replicates.annotation_sheet.csv"), index=False)
 
-    # Copy log to projectDir
-    shutil.copy2(
-        os.path.join(os.getcwd(), args.project_name + ".log"),
-        os.path.join(projectDir, "runs", args.project_name + ".log")
-    )
-    logger.debug("Copied log file to project directory '%s'" % os.path.join(projectDir, "runs"))
+    logger.debug("Finished preprocessing")
+
+    return (logger,
+            os.path.join(os.getcwd(), args.project_name + ".log"),
+            os.path.join(projectDir, "runs", args.project_name + ".log"))
 
 
 def comparison(args, logger):
@@ -784,12 +783,11 @@ def comparison(args, logger):
                 sys.exit(1)
             logger.debug("Project '%s'submission finished successfully." % args.project_name)
 
-    # Copy log to projectDir
-    shutil.copy2(
-        os.path.join(os.getcwd(), args.project_name + ".log"),
-        os.path.join(projectDir, "runs", args.project_name + ".log")
-    )
-    logger.debug("Copied log file to project directory '%s'" % os.path.join(projectDir, "runs"))
+    logger.debug("Finished comparison")
+
+    return (logger,
+            os.path.join(os.getcwd(), args.project_name + ".log"),
+            os.path.join(projectDir, "runs", args.project_name + ".log"))
 
 
 def slurmHeader(jobName, output, queue="shortq", ntasks=1, time="10:00:00",
@@ -1276,4 +1274,4 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         print("Program canceled by user!")
-        sys.exit(0)
+        sys.exit(1)

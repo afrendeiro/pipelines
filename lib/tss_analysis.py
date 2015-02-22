@@ -164,9 +164,11 @@ def main():
     dfNorm.drop("cluster", axis=1, inplace=True)
 
     # Plot heatmap
+    plt.figure()
     fig, ax = plt.subplots()
     ax = sns.heatmap(dfNorm, linewidths=0.0, rasterized=True)
     fig.savefig(exportName + "_%i_kmeans_clusters.pdf" % args.n_clusters)
+    plt.close()
 
     # Export as cdt
     exportToJavaTreeView(dfNorm.copy(), exportName + "_%i_kmeans_clusters.normalized_clustered.cdt" % args.n_clusters)

@@ -24,6 +24,7 @@ import logging
 import pandas as pd
 import numpy as np
 import time
+import random
 import re
 import string
 import textwrap
@@ -249,6 +250,25 @@ def preprocess(args, logger):
 
     # Other static info
 
+    # from the ggplot2 color blind pallete
+    # #999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7"
+    # shortly: green,red=active, orange=transcription, blue=repression, yellow=potential
+    colours = {
+        "IGG": "153,153,153", "INPUT": "153,153,153",  # grey
+        "H3K36ME1": "230,159,0", "H3K36ME2": "230,159,0", "H3K36ME3": "230,159,0",  # orange
+        "H3K4ME3": "0,158,115",  # bluish green
+        "H3K4ME1": "240,228,66",  "H3K14ac": "240,228,66",  # yellow
+        "H3K27ME1": "0,114,178", "H3K27ME2": "0,114,178",  "H3K27ME3": "0,114,178",  # blue
+        "H3K9ME1": "86,180,233", "H3K9ME2": "86,180,233",  "H3K9ME3": "86,180,233",  # sky blue
+        "H3AC": "213,94,0", "H3K9AC": "213,94,0", "H3K27AC": "213,94,0",  "H3K56AC": "213,94,0", "H3K56AC": "213,94,0",  # vermillion
+        "H3K79ME1": "204,121,167", "H3K79ME2": "204,121,167", "H3K79ME3": "204,121,167"  # reddish purple
+    }
+
+    colour_gradient = [  # 10 colour gradient from red to blue
+        "155, 3, 5", "140, 2, 18", "125, 2, 31", "110, 2, 44", "96, 2, 57",
+        "81, 2, 70", "66, 2, 83", "52, 2, 96", "37, 2, 109", "22, 2, 122"
+    ]
+
     # Parse sample information
     args.csv = os.path.abspath(args.csv)
 
@@ -313,6 +333,12 @@ def preprocess(args, logger):
             bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2")
         else:
             bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted")
+
+        # get colour for tracks
+        if samples["ip"][sample].upper() in colours.keys():
+            colour = colours[samples["ip"][sample]]
+        else:
+            colour = random.sample(colour_gradient, 1)[0]  # pick one randomly
 
         # append to list of Biological Replicates
         toAppend = s.copy()
@@ -424,7 +450,8 @@ def preprocess(args, logger):
             jobCode += addTrackToHub(
                 sampleName=sampleName,
                 trackURL=urlRoot + sampleName + ".bigWig",
-                trackHub=os.path.join(htmlDir, "trackHub.txt")
+                trackHub=os.path.join(htmlDir, "trackHub_{0}.txt".format(samples["genome"][sample])),
+                colour=colour
             )
             if tagmented:
                 jobCode += bamToUCSC(
@@ -437,12 +464,12 @@ def preprocess(args, logger):
                 jobCode += addTrackToHub(
                     sampleName=sampleName,
                     trackURL=urlRoot + sampleName + ".5prime.bigWig",
-                    trackHub=os.path.join(htmlDir, "trackHub.txt"),
-                    fivePrime="5prime"
+                    trackHub=os.path.join(htmlDir, "trackHub_{0}.txt".format(samples["genome"][sample])),
+                    fivePrime="5prime",
+                    colour=colour
                 )
-            # TODO: separate this per genome
             linkToTrackHub(
-                trackHubURL="{0}/{1}/bigWig/trackHub_{2}.txt".format(args.url_root, args.project_name, samples["genome"][sample]),
+                trackHubURL=os.path.join(htmlDir, "trackHub_{0}.txt".format(samples["genome"][sample])),
                 fileName=os.path.join(projectDir, "ucsc_tracks_{0}.html".format(samples["genome"][sample])),
                 genome=samples["genome"][sample]
             )
@@ -502,10 +529,11 @@ def comparison(args, logger):
 
     # Other static info
     histones = ["H2A", "H2B", "H3", "H4"]
-    broadFactors = ["H3K27me1", "H3K27me2", "H3K27me3",
-                    "H3K36me1", "H3K36me2", "H3K36me3",
-                    "H3K9me1", "H3K9me2", "H3K9me3",
-                    "H3K72me1", "H3K72me2", "H3K72me3"
+    broadFactors = [
+        "H3K27ME1", "H3K27ME2", "H3K27ME3",
+        "H3K36ME1", "H3K36ME2", "H3K36ME3",
+        "H3K9ME1", "H3K9ME2", "H3K9ME3",
+        "H3K72ME1", "H3K72ME2", "H3K72ME3"
     ]
 
     tssFiles = {
@@ -593,8 +621,8 @@ def comparison(args, logger):
                     outputDir=os.path.join(dataDir, "peaks", sampleName),
                     sampleName=sampleName,
                     genome=samples['genome'][sample],
-                    broad=False if samples["ip"][sample].lower() not in broadFactors else True
-                )   
+                    broad=False if samples["ip"][sample].upper() not in broadFactors else True
+                )
             elif args.peak_caller == "spp":
                 # For point-source factors use default settings
                 # For broad factors use broad settings
@@ -604,7 +632,7 @@ def comparison(args, logger):
                     treatmentName=sampleName,
                     controlName=controlName,
                     outputDir=os.path.join(dataDir, "peaks", sampleName),
-                    broad=False if samples["ip"][sample].lower() not in broadFactors else True,
+                    broad=False if samples["ip"][sample].upper() not in broadFactors else True,
                     cpus=args.cpus
                 )
 
@@ -755,7 +783,8 @@ def comparison(args, logger):
     logger.debug("Copied log file to project directory '%s'" % os.path.join(projectDir, "runs"))
 
 
-def slurmHeader(jobName, output, queue="shortq", ntasks=1, time="10:00:00", cpusPerTask=16, memPerCpu=2000, nodes=1, userMail=""):
+def slurmHeader(jobName, output, queue="shortq", ntasks=1, time="10:00:00",
+                cpusPerTask=16, memPerCpu=2000, nodes=1, userMail=""):
     command = """    #!/bin/bash
     #SBATCH --partition={0}
     #SBATCH --ntasks={1}
@@ -775,7 +804,8 @@ def slurmHeader(jobName, output, queue="shortq", ntasks=1, time="10:00:00", cpus
     hostname
     date
 
-    """.format(queue, ntasks, time, cpusPerTask, memPerCpu, nodes, jobName, output, userMail)
+    """.format(queue, ntasks, time, cpusPerTask, memPerCpu,
+               nodes, jobName, output, userMail)
 
     return command
 
@@ -901,11 +931,12 @@ def shiftReads(inputBam, outputBam):
     module load python
 
     samtools view -h {0} | \\
-    python {1}/lib/shift_reads.py | \\
+    python {2}/lib/shift_reads.py | \\
     samtools view -S -b - | \\
-    samtools sort - {2}
+    samtools sort - {1}
 
-    """.format(inputBam, os.path.abspath(os.path.dirname(os.path.realpath(__file__))), outputBam)
+    """.format(inputBam, outputBam,
+               os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
 
     return command
 
@@ -976,6 +1007,9 @@ def qc():
 def bamToUCSC(inputBam, outputBigWig, genomeSizes, genome, tagmented=False):
     transientFile = os.path.abspath(re.sub("\.bigWig", "", outputBigWig))
     if not tagmented:
+        # TODO:
+        # addjust fragment length dependent on read size and real fragment size
+        # (right now it asssumes 50bp reads with 180bp fragments)
         command = """
     # Making bigWig tracks from bam file
     echo "making bigWig tracks from bam file"
@@ -1018,20 +1052,23 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, genome, tagmented=False):
 
     chmod 755 {3}
 
-    """.format(inputBam, genomeSizes, transientFile, outputBigWig, os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
+    """.format(inputBam, genomeSizes, transientFile, outputBigWig,
+               os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
 
     return command
 
 
-def addTrackToHub(sampleName, trackURL, trackHub, fivePrime=""):
+def addTrackToHub(sampleName, trackURL, trackHub, colour, fivePrime=""):
     command = """
     # Adding track to TrackHub
     echo "Adding track to TrackHub"
-    echo 'track type=bigWig name="{0} {3}" description="{0} {3}" visibility=3 bigDataUrl={1}' >> {2}
+    echo 'track type=bigWig name="{0} {1}" description="{0} {1}""".format(sampleName, fivePrime)
+    command += "height=32 maxHeightPixels 32:32:25 visibility=full"
+    command += """ bigDataUrl={0} color={1}' >> {1}
 
-    chmod 755 {2}
+    chmod 755 {1}
 
-    """.format(sampleName, trackURL, trackHub, fivePrime)
+    """.format(trackURL, colour, trackHub)
 
     return command
 
@@ -1043,7 +1080,8 @@ def linkToTrackHub(trackHubURL, fileName, genome):
     html = """
     <html>
         <head>
-            <meta http-equiv="refresh" content="0; url=http://genome.ucsc.edu/cgi-bin/hgTracks?{db}={genome}&hgt.customText={trackHubURL}" />
+            <meta http-equiv="refresh" content="0; url=http://genome.ucsc.edu/cgi-bin/hgTracks?"""
+    html += """{db}={genome}&hgt.customText={trackHubURL}" />
         </head>
     </html>
     """.format(trackHubURL=trackHubURL, genome=genome, db=db)
@@ -1054,6 +1092,7 @@ def linkToTrackHub(trackHubURL, fileName, genome):
 
 def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broad=False):
     if not broad:
+        # Check wth Christian if fragment length should be different for ChIP or CM
         command = """
     # Call peaks with MACS2
     echo "Calling peaks with MACS2"
@@ -1136,14 +1175,16 @@ def centerPeaksOnMotifs(peakFile, genome, windowWidth, motifFile, outputBed):
 
     annotatePeaks.pl {0} {1} -size {2} -center {3} | \\
     awk -v OFS='\\t' '{{print $2, $3, $4, $1, $6, $5}}' | \\
-    python {4}/lib/fix_bedfile_genome_boundaries.py {1} | \\
-    sortBed > {5}
-    """.format(peakFile, genome, windowWidth, motifFile, os.path.abspath(os.path.dirname(os.path.realpath(__file__))), outputBed)
+    python {5}/lib/fix_bedfile_genome_boundaries.py {1} | \\
+    sortBed > {4}
+    """.format(peakFile, genome, windowWidth, motifFile, outputBed,
+               os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
 
     return command
 
 
-def peakAnalysis(inputBam, peakFile, plotsDir, windowWidth, fragmentsize, genome, n_clusters, strand_specific, duplicates):
+def peakAnalysis(inputBam, peakFile, plotsDir, windowWidth, fragmentsize,
+                 genome, n_clusters, strand_specific, duplicates):
     command = """
     # Analyse peak profiles
     echo "Analysing peak profiles"
@@ -1166,7 +1207,8 @@ def peakAnalysis(inputBam, peakFile, plotsDir, windowWidth, fragmentsize, genome
     return command
 
 
-def tssAnalysis(inputBam, tssFile, plotsDir, windowWidth, fragmentsize, genome, n_clusters, strand_specific, duplicates):
+def tssAnalysis(inputBam, tssFile, plotsDir, windowWidth, fragmentsize, genome,
+                n_clusters, strand_specific, duplicates):
     command = """
     # Analyse peak profiles
     echo "Analysing peak profiles"
@@ -1193,7 +1235,8 @@ def footprintAnalysis():
     raise NotImplementedError("Function not implemented yet.")
 
 
-def plotCorrelations(inputBams, plotsDir, duplicates=False, windowWidth=1000, fragmentSize=50, genome="hg19"):
+def plotCorrelations(inputBams, plotsDir, duplicates=False,
+                     windowWidth=1000, fragmentSize=50, genome="hg19"):
     command = """
     # Plot correlations
     echo "plotting correlations"

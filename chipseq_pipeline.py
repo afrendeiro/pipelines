@@ -249,6 +249,11 @@ def preprocess(args, logger):
     adapterFasta = "/fhgfs/groups/lab_bock/shared/chipmentation.fa"
 
     # Other static info
+    tagment = [
+        "DNASE", "DNASESEQ", "DNASE-SEQ", "DHS", "DHS-SEQ", "DHSSEQ",
+        "ATAC", "ATAC-SEQ", "ATACSEQ",
+        "CM"
+    ]
 
     # from the ggplot2 color blind pallete
     # #999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7"
@@ -326,8 +331,7 @@ def preprocess(args, logger):
         jobName = projectName + "_" + sampleName
 
         # check if sample is tagmented or not:
-        # todo: get tagmented from technique
-        tagmented = biologicalReplicates[sample][0]["tagmented"] == "yes" or biologicalReplicates[sample][0]["tagmented"] == 1
+        tagmented = True if biologicalReplicates[sample][0]["technique"] in tagment else False
 
         if not tagmented:
             bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2")
@@ -411,9 +415,6 @@ def preprocess(args, logger):
             tempFiles.append(os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"))
         if args.stage in ["all", "shiftreads"]:
             if tagmented:
-                # TODO:
-                # Get correct relative path.
-                # Relative to location of *this* file rather than relative to cwd.
                 jobCode += shiftReads(
                     inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
                     outputBam=bam + ".bam"
@@ -528,6 +529,11 @@ def comparison(args, logger):
     # Paths to static files on the cluster
 
     # Other static info
+    tagment = [
+        "DNASE", "DNASESEQ", "DNASE-SEQ", "DHS", "DHS-SEQ", "DHSSEQ",
+        "ATAC", "ATAC-SEQ", "ATACSEQ",
+        "CM"
+    ]
     histones = ["H2A", "H2B", "H3", "H4"]
     broadFactors = [
         "H3K27ME1", "H3K27ME2", "H3K27ME3",
@@ -590,6 +596,9 @@ def comparison(args, logger):
                 controlName = string.join([str(samples[var][controlIdx]) for var in variables], sep="_")
                 logger.debug("No sample name provided, using concatenation of variables supplied")
 
+        # check if sample is tagmented or not:
+        tagmented = True if samples["technique"][sample] in tagment else False
+
         # Is it a histone?
         histone = True if any([i in samples["ip"][sample] for i in histones]) else False
 
@@ -648,7 +657,7 @@ def comparison(args, logger):
                     outputDir=os.path.join(dataDir, "motifs", sampleName),
                     size="50",
                     length="8,10,12,14,16",
-                    n_motifs=12
+                    n_motifs=8
                 )
                 # For TFs, find co-binding motifs (broader region)
                 jobCode += homerFindMotifs(
@@ -686,7 +695,7 @@ def comparison(args, logger):
         if args.stage in ["all", "annotatepeaks"] and control:
             # TODO:
             # right now this assumes peaks were called with MACS2
-            # figure a way of magetting the peak files withough using the peak_caller option
+            # figure a way of getting the peak files withough using the peak_caller option
             # for that would imply taht option would be required when selecting this stage
             jobCode += AnnotatePeaks(
                 peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
@@ -701,7 +710,7 @@ def comparison(args, logger):
                 peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifCentered.bed"),
                 plotsDir=os.path.join(resultsDir, 'plots'),
                 windowWidth=2000,
-                fragmentsize=1 if samples.ix[sample]['tagmented'] else 50,  # change this to actual read length
+                fragmentsize=1 if tagmented else 50,  # change this to actual read length
                 genome=samples.ix[sample]['genome'],
                 n_clusters=5,
                 strand_specific=True,
@@ -714,14 +723,14 @@ def comparison(args, logger):
                 tssFile=tssFiles[samples.ix[sample]['genome']],
                 plotsDir=os.path.join(resultsDir, 'plots'),
                 windowWidth=2000,
-                fragmentsize=1 if samples.ix[sample]['tagmented'] else 50,  # change this to actual read length
+                fragmentsize=1 if tagmented else 50,  # change this to actual read length
                 genome=samples.ix[sample]['genome'],
                 n_clusters=5,
                 strand_specific=True,
                 duplicates=True
             )
 
-        # if args.stage in ["all", "footprints"] and control:
+        # if args.stage in ["all", "footprints"] and control and tagmented:
         #     jobCode += footprintAnalysis(
         #         os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifCentered.bed"),
         #         os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifAnnotated.bed")

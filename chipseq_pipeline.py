@@ -1335,11 +1335,12 @@ def diffBind(inputCSV, jobName, plotsDir):
     echo "Detecting differential binding with diffBind"
     module load R
 
-    Rscript {2}/lib/diffBind_analysis.R \\
+    Rscript {3}/lib/diffBind_analysis.R \\
     {0} \\
     {1} \\
+    {2} \\
 
-    """.format(inputCSV, plotsDir,
+    """.format(inputCSV, jobName, plotsDir,
                os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
 
     return command

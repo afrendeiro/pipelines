@@ -105,8 +105,21 @@ def main():
                 xlim(c(-100, 100)) +
                 theme(legend.position="bottom")
 
-            ggsave(filename = "{0}_averageProfile_200bp.pdf", plot = p, height = 3, width = 7)
-            ggsave(filename = "{0}_averageProfile_200bp.wide.pdf", plot = p, height = 3, width = 12)
+            ggsave(filename = "{0}_averageProfile_200bp.pdf", plot = p, height = 3, width = 12)
+
+            p = ggplot(df, aes(x, value, colour = variable)) +
+                geom_line() +
+                #stat_smooth(method = "gam", formula = y ~ s(x, k = 20), se = FALSE) +
+                facet_wrap(~variable, scales="free", ncol=3) +
+                xlab("Distance to peak") +
+                ylab("Average tags per bp") +
+                theme_bw() +
+                theme(legend.title=element_blank()) +
+                scale_colour_manual(values=c("black", "dark blue","dark red")) +
+                xlim(c(-400, 400)) +
+                theme(legend.position="bottom")
+
+            ggsave(filename = "{0}_averageProfile_200bp.pdf", plot = p, height = 3, width = 12)
 
             p = ggplot(df, aes(x, value, colour = variable)) +
                 geom_line() +
@@ -120,8 +133,7 @@ def main():
                 xlim(c({1}, {2})) +
                 theme(legend.position="bottom")
 
-            ggsave(filename = "{0}_averageProfile_{3}bp.pdf", plot = p, height = 3, width = 7)
-            ggsave(filename = "{0}_averageProfile_{3}bp.wide.pdf", plot = p, height = 3, width = 12)
+            ggsave(filename = "{0}_averageProfile_{3}bp.pdf", plot = p, height = 3, width = 12)
         }}
     """.format(exportName, window_range[0], window_range[1], args.window_width))
 

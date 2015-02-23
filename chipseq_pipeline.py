@@ -82,7 +82,7 @@ def main():
     preprocess_subparser.add_argument('-s', '--stage', default="all", dest='stage',
                                       choices=["all", "bam2fastq", "fastqc", "trimming", "mapping",
                                                "shiftreads", "markduplicates", "removeduplicates",
-                                               "indexbam", "qc", "maketracks", "mergereplicates"],
+                                               "indexbam", "qc", "maketracks"],
                                       help='Run only these stages. Default=all.', type=str)
     # analyse
     comparison_subparser = subparser.add_parser("analyse")
@@ -281,8 +281,8 @@ def preprocess(args, logger):
     }
 
     colour_gradient = [  # 10 colour gradient from red to blue
-        "155, 3, 5", "140, 2, 18", "125, 2, 31", "110, 2, 44", "96, 2, 57",
-        "81, 2, 70", "66, 2, 83", "52, 2, 96", "37, 2, 109", "22, 2, 122"
+        "155,3,5", "140,2,18", "125,2,31", "110,2,44", "96,2,57",
+        "81,2,70", "66,2,83", "52,2,96", "37,2,109", "22,2,122"
     ]
 
     # Parse sample information
@@ -481,7 +481,7 @@ def preprocess(args, logger):
                     colour=colour
                 )
             linkToTrackHub(
-                trackHubURL=os.path.join(htmlDir, "trackHub_{0}.txt".format(samples["genome"][sample])),
+                trackHubURL="{0}/{1}/bigWig/trackHub_{2}.txt".format(args.url_root, args.project_name, samples["genome"][sample]),
                 fileName=os.path.join(projectDir, "ucsc_tracks_{0}.html".format(samples["genome"][sample])),
                 genome=samples["genome"][sample]
             )
@@ -656,9 +656,10 @@ def analyse(args, logger):
                 )
 
         if args.stage in ["all", "findmotifs"] and control:
+            # make dir for motifs
             if not os.path.exists(os.path.join(dataDir, "motifs", sampleName)):
                     os.makedirs(os.path.join(dataDir, "motifs", sampleName))
-            histone = True
+
             if not histone:
                 # For TFs, find the "self" motif
                 jobCode += homerFindMotifs(
@@ -747,32 +748,6 @@ def analyse(args, logger):
         #     )
 
         # finish job
-        jobCode += slurmFooter()
-        jobs[jobName] = jobCode
-
-    # Submit job for all samples together
-    jobName = projectName + "_" + "sample_correlations"
-
-    if args.stage in ["all", "correlations"]:
-        # TODO:
-        # Submit separate jobs for each genome
-        jobCode = slurmHeader(
-            jobName=jobName,
-            output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
-            queue=args.queue,
-            time=args.time,
-            cpusPerTask=args.cpus,
-            memPerCpu=args.mem,
-            userMail=args.user_mail
-        )
-        jobCode += plotCorrelations(
-            inputBams=list(samples['filePath']),
-            plotsDir=os.path.join(resultsDir, 'plots'),
-            duplicates=args.duplicates,
-            windowWidth=args.genome_window_width,
-            fragmentSize=50,
-            genome="hg19"
-        )
         jobCode += slurmFooter()
         jobs[jobName] = jobCode
 
@@ -877,6 +852,33 @@ def compare(args, logger):
                     )
                     jobCode += slurmFooter()
                     jobs[jobName] = jobCode
+
+
+    # Submit job for all samples together
+    jobName = projectName + "_" + "sample_correlations"
+
+    if args.stage in ["all", "correlations"]:
+        # TODO:
+        # Submit separate jobs for each genome
+        jobCode = slurmHeader(
+            jobName=jobName,
+            output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
+            queue=args.queue,
+            time=args.time,
+            cpusPerTask=args.cpus,
+            memPerCpu=args.mem,
+            userMail=args.user_mail
+        )
+        jobCode += plotCorrelations(
+            inputBams=list(samples['filePath']),
+            plotsDir=os.path.join(resultsDir, 'plots'),
+            duplicates=args.duplicates,
+            windowWidth=args.genome_window_width,
+            fragmentSize=50,
+            genome="hg19"
+        )
+        jobCode += slurmFooter()
+        jobs[jobName] = jobCode
 
     # Submit jobs to slurm
     for jobName, jobCode in jobs.items():
@@ -1218,9 +1220,8 @@ def addTrackToHub(sampleName, trackURL, trackHub, colour, fivePrime=""):
     command = """
     # Adding track to TrackHub
     echo "Adding track to TrackHub"
-    echo 'track type=bigWig name="{0} {1}" description="{0} {1}""".format(sampleName, fivePrime)
-    command += " height=32 maxHeightPixels 32:32:25 visibility=full"
-    command += """ bigDataUrl={0} color={1}' >> {2}
+    echo 'track type=bigWig name="{0} {1}" description="{0} {1}" """.format(sampleName, fivePrime)
+    command += """height=32 visibility=full maxHeightPixels=32:32:25 bigDataUrl={0} color={1}' >> {2} 
 
     chmod 755 {2}
 
@@ -1247,6 +1248,13 @@ def linkToTrackHub(trackHubURL, fileName, genome):
 
 
 def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broad=False):
+    if genome == "hg19":
+        genome = "hs"
+    elif genome == "mm10":
+        genome = "mm"
+    elif genome == "dr7":
+        raise ValueError("Genome dr7 not supported for peak calling with MACS2.")
+
     if not broad:
         # Check wth Christian if fragment length should be different for ChIP or CM
         command = """
@@ -1366,7 +1374,7 @@ def peakAnalysis(inputBam, peakFile, plotsDir, windowWidth, fragmentsize,
     if strand_specific:
         command += "--strand-specific "
     if duplicates:
-        command += "--duplicates "
+        command += "--duplicates\n"
 
     return command
 

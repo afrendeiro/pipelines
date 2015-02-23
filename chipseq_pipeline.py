@@ -998,7 +998,9 @@ def mergeBams(inputBams, outputBam):
     echo "Merging bam files from replicates"
     module load samtools
 
-    samtools merge {0} {1}
+    samtools merge \\
+    {0} \\
+    {1}
 
     """.format(outputBam, (" ".join(["%s"] * len(inputBams))) % tuple(inputBams))
 
@@ -1011,7 +1013,10 @@ def bam2fastq(inputBam, outputFastq):
     echo "Converting original Bam file to Fastq"
     module load bamtools
 
-    bamtools convert -in {0} -format fastq -out {1}
+    bamtools convert \\
+    -in {0} \\
+    -format fastq \\
+    -out {1}
 
     """.format(inputBam, outputFastq)
 
@@ -1025,7 +1030,9 @@ def fastqc(inputFastq, outputDir):
     module load java/jdk/1.7.0_65
     module load FastQC/0.11.2
 
-    fastqc --noextract --outdir {0} {1}
+    fastqc --noextract \\
+    --outdir {0} \\
+    {1}
 
     """.format(outputDir, inputFastq)
 
@@ -1038,7 +1045,8 @@ def trimAdapters(inputFastq, outputFastq, adapters):
     echo "Trimming adapters from sample"
     module load trimmomatic/0.32
 
-    java -jar `which trimmomatic-0.32.jar` SE {0} {1} \\
+    java -jar `which trimmomatic-0.32.jar` SE {0} \\
+    {1} \\
     ILLUMINACLIP:{2}:1:40:15 \\
     LEADING:3 TRAILING:3 \\
     SLIDINGWINDOW:4:10 \\
@@ -1057,7 +1065,9 @@ def bowtie2Map(inputFastq, outputBam, genomeIndex, cpus):
     module load bowtie/2.2.3
     module load samtools
 
-    bowtie2 --very-sensitive -p {0} -x {1} {2} | \\
+    bowtie2 --very-sensitive -p {0} \\
+    -x {1} \\
+    {2} | \\
     samtools view -S -b - | \\
     samtools sort - {3}
 
@@ -1209,7 +1219,7 @@ def addTrackToHub(sampleName, trackURL, trackHub, colour, fivePrime=""):
     # Adding track to TrackHub
     echo "Adding track to TrackHub"
     echo 'track type=bigWig name="{0} {1}" description="{0} {1}""".format(sampleName, fivePrime)
-    command += "height=32 maxHeightPixels 32:32:25 visibility=full"
+    command += " height=32 maxHeightPixels 32:32:25 visibility=full"
     command += """ bigDataUrl={0} color={1}' >> {2}
 
     chmod 755 {2}
@@ -1364,8 +1374,8 @@ def peakAnalysis(inputBam, peakFile, plotsDir, windowWidth, fragmentsize,
 def tssAnalysis(inputBam, tssFile, plotsDir, windowWidth, fragmentsize, genome,
                 n_clusters, strand_specific, duplicates):
     command = """
-    # Analyse peak profiles
-    echo "Analysing peak profiles"
+    # Analyse signal over TSSs
+    echo "Analysing signal over TSSs"
 
     python {0}/lib/tss_analysis.py {1} \\
     {2} \\

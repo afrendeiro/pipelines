@@ -14,56 +14,25 @@ import rpy2.robjects as robj  # for ggplot in R
 import rpy2.robjects.pandas2ri  # for R dataframe conversion
 
 
-def makeWindows(windowWidth, genome):
-    """Generate 1kb windows genome-wide."""
-    w = BedTool.window_maker(BedTool(), genome=genome, w=windowWidth)
-    windows = dict()
-    for interval in w:
-        feature = HTSeq.GenomicInterval(
-            interval.chrom,
-            interval.start,
-            interval.end
-        )
-        name = string.join(interval.fields, sep="_")
-        windows[name] = feature
-
-    return windows
-
-
-def coverage(bam, intervals, fragmentsize, duplicates=False):
-    """ Gets read coverage in bed regions, returns dict with region:count.
-    bam - Bam object from HTSeq.BAM_Reader.
-    intervals - dict with HTSeq.GenomicInterval objects as values.
-    fragmentsize - integer.
-    duplicates - boolean.
-    """
-    chroms = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9', 'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17', 'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX']
-    # Loop through TSSs, get coverage, append to dict
-    cov = dict()
-
-    for name, feature in intervals.iteritems():
-        if feature.chrom not in chroms:
-            continue
-        count = 0
-
-        # Fetch alignments in feature window
-        for aln in bam[feature]:
-            # check if duplicate
-            if not duplicates and aln.pcr_or_optical_duplicate:
-                continue
-
-            # adjust fragment to size
-            aln.iv.length = fragmentsize
-
-            # add +1 to all positions overlapped by read within window
-            count += 1
-
-        # append feature profile to dict
-        cov[name] = count
-    return cov
-
-
 def main(args):
+    # Parse command-line arguments
+    parser = ArgumentParser(
+        description='correlations.py',
+        usage='python correlations.py [options] <directory> file1 [file2 ... fileN]'
+    )
+
+    # Global options
+    # positional arguments
+    parser.add_argument(dest='plots_dir', type=str, help='Directory to save plots to.')
+    parser.add_argument('bamfiles', nargs='*', help='bamFiles')
+    # optional arguments
+    parser.add_argument('--duplicates', dest='duplicates', action='store_true')
+    parser.add_argument('--window-width', dest='window_width', type=int, default=1000)
+    parser.add_argument('--fragment-size', dest='fragment_size', type=int, default=50)
+    parser.add_argument('--genome', dest='genome', type=str, default='hg19')
+
+    args = parser.parse_args()
+
     plotFunc = robj.r("""
         library(ggplot2)
         library(reshape2)
@@ -116,23 +85,54 @@ def main(args):
         plotFunc(df_R, os.path.join(args.plots_dir, sample1 + "_vs_" + sample2 + ".pdf"))
 
 
+def makeWindows(windowWidth, genome):
+    """Generate 1kb windows genome-wide."""
+    w = BedTool.window_maker(BedTool(), genome=genome, w=windowWidth)
+    windows = dict()
+    for interval in w:
+        feature = HTSeq.GenomicInterval(
+            interval.chrom,
+            interval.start,
+            interval.end
+        )
+        name = string.join(interval.fields, sep="_")
+        windows[name] = feature
+
+    return windows
+
+
+def coverage(bam, intervals, fragmentsize, duplicates=False):
+    """ Gets read coverage in bed regions, returns dict with region:count.
+    bam - Bam object from HTSeq.BAM_Reader.
+    intervals - dict with HTSeq.GenomicInterval objects as values.
+    fragmentsize - integer.
+    duplicates - boolean.
+    """
+    chroms = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9', 'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17', 'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX']
+    # Loop through TSSs, get coverage, append to dict
+    cov = dict()
+
+    for name, feature in intervals.iteritems():
+        if feature.chrom not in chroms:
+            continue
+        count = 0
+
+        # Fetch alignments in feature window
+        for aln in bam[feature]:
+            # check if duplicate
+            if not duplicates and aln.pcr_or_optical_duplicate:
+                continue
+
+            # adjust fragment to size
+            aln.iv.length = fragmentsize
+
+            # add +1 to all positions overlapped by read within window
+            count += 1
+
+        # append feature profile to dict
+        cov[name] = count
+    return cov
+
+
 if __name__ == '__main__':
-    # Parse command-line arguments
-    parser = ArgumentParser(
-        description='correlations.py',
-        usage='python correlations.py [options] <directory> file1 [file2 ... fileN]'
-    )
-
-    # Global options
-    # positional arguments
-    parser.add_argument(dest='plots_dir', type=str, help='Directory to save plots to.')
-    parser.add_argument('bamfiles', nargs='*', help='bamFiles')
-    # optional arguments
-    parser.add_argument('--duplicates', dest='duplicates', action='store_true')
-    parser.add_argument('--window-width', dest='window_width', type=int, default=1000)
-    parser.add_argument('--fragment-size', dest='fragment_size', type=int, default=50)
-    parser.add_argument('--genome', dest='genome', type=str, default='hg19')
-
-    args = parser.parse_args()
-
-    main(args)
+    main()

@@ -84,8 +84,8 @@ def main():
                                                "shiftreads", "markduplicates", "removeduplicates",
                                                "indexbam", "qc", "maketracks", "mergereplicates"],
                                       help='Run only these stages. Default=all.', type=str)
-    # comparison
-    comparison_subparser = subparser.add_parser("comparison")
+    # analyse
+    comparison_subparser = subparser.add_parser("analyse")
     comparison_subparser.add_argument(dest='project_name', help="Project name.", type=str)
     comparison_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
     comparison_subparser.add_argument('-s', '--stage', default="all", dest='stage',
@@ -100,6 +100,14 @@ def main():
                                       help='Allow duplicates in coorelation analysis. Default=False.')
     comparison_subparser.add_argument('--genome-window-width', default=1000,
                                       dest='genome_window_width', help='Width of window to make genome-wide correlations. Default=1000.', type=int)
+
+    # compare
+    comparison_subparser = subparser.add_parser("compare")
+    comparison_subparser.add_argument(dest='project_name', help="Project name.", type=str)
+    comparison_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
+    comparison_subparser.add_argument('-s', '--stage', default="all", dest='stage',
+                                      choices=["all", "diffbind"],
+                                      help='Run only these stages. Default=all.', type=str)
 
     # Parse
     args = parser.parse_args()
@@ -128,8 +136,11 @@ def main():
     # Start main function
     if args.command == "preprocess":
         logger, fr, to = preprocess(args, logger)
-    elif args.command == "comparison":
-        logger, fr, to = comparison(args, logger)
+    elif args.command == "analyse":
+        logger, fr, to = analyse(args, logger)
+
+    elif args.command == "compare":
+        logger, fr, to = compare(args, logger)
 
     # Exit
     logger.info("Finished and exiting.")
@@ -262,10 +273,10 @@ def preprocess(args, logger):
         "IGG": "153,153,153", "INPUT": "153,153,153",  # grey
         "H3K36ME1": "230,159,0", "H3K36ME2": "230,159,0", "H3K36ME3": "230,159,0",  # orange
         "H3K4ME3": "0,158,115",  # bluish green
-        "H3K4ME1": "240,228,66",  "H3K14ac": "240,228,66",  # yellow
-        "H3K27ME1": "0,114,178", "H3K27ME2": "0,114,178",  "H3K27ME3": "0,114,178",  # blue
-        "H3K9ME1": "86,180,233", "H3K9ME2": "86,180,233",  "H3K9ME3": "86,180,233",  # sky blue
-        "H3AC": "213,94,0", "H3K9AC": "213,94,0", "H3K27AC": "213,94,0",  "H3K56AC": "213,94,0", "H3K56AC": "213,94,0",  # vermillion
+        "H3K4ME1": "240,228,66", "H3K14ac": "240,228,66",  # yellow
+        "H3K27ME1": "0,114,178", "H3K27ME2": "0,114,178", "H3K27ME3": "0,114,178",  # blue
+        "H3K9ME1": "86,180,233", "H3K9ME2": "86,180,233", "H3K9ME3": "86,180,233",  # sky blue
+        "H3AC": "213,94,0", "H3K9AC": "213,94,0", "H3K27AC": "213,94,0", "H3K56AC": "213,94,0", "H3K56AC": "213,94,0",  # vermillion
         "H3K79ME1": "204,121,167", "H3K79ME2": "204,121,167", "H3K79ME3": "204,121,167"  # reddish purple
     }
 
@@ -340,7 +351,7 @@ def preprocess(args, logger):
 
         # get colour for tracks
         if samples["ip"][sample].upper() in colours.keys():
-            colour = colours[samples["ip"][sample]]
+            colour = colours[samples["ip"][sample].upper()]
         else:
             colour = random.sample(colour_gradient, 1)[0]  # pick one randomly
 
@@ -519,8 +530,8 @@ def preprocess(args, logger):
             os.path.join(projectDir, "runs", args.project_name + ".log"))
 
 
-def comparison(args, logger):
-    logger.info("Starting sample comparison.")
+def analyse(args, logger):
+    logger.info("Starting sample analysis.")
 
     logger.debug("Checking project directories exist and creating if not.")
     htmlDir, projectDir, dataDir, resultsDir, urlRoot = checkProjectDirs(args, logger)
@@ -765,6 +776,67 @@ def comparison(args, logger):
         jobCode += slurmFooter()
         jobs[jobName] = jobCode
 
+    # Submit jobs to slurm
+    for jobName, jobCode in jobs.items():
+        # Output file name
+        jobFile = os.path.join(projectDir, "runs", jobName + ".sh")
+
+        with open(jobFile, 'w') as handle:
+            handle.write(textwrap.dedent(jobCode))
+
+        # Submit to slurm
+        if not args.dry_run:
+            logger.info("Submitting jobs to slurm")
+            status = slurmSubmitJob(jobFile)
+
+            if status != 0:
+                logger.error("Slurm job '%s' not successfull" % jobFile)
+                sys.exit(1)
+            logger.debug("Project '%s'submission finished successfully." % args.project_name)
+
+    logger.debug("Finished comparison")
+
+    return (logger,
+            os.path.join(os.getcwd(), args.project_name + ".log"),
+            os.path.join(projectDir, "runs", args.project_name + ".log"))
+
+
+def compare(args, logger):
+    logger.info("Starting sample comparison.")
+
+    logger.debug("Checking project directories exist and creating if not.")
+    htmlDir, projectDir, dataDir, resultsDir, urlRoot = checkProjectDirs(args, logger)
+
+    # Paths to static files on the cluster
+
+    # Other static info
+
+    # Parse sample information
+    args.csv = os.path.abspath(args.csv)
+
+    # check if exists and is a file
+    if not os.path.isfile(args.csv):
+        logger.error("Sample annotation '%s' does not exist, or user has no read access." % args.csv)
+        sys.exit(1)
+
+    # read in
+    samples = pd.read_csv(args.csv)
+
+    # TODO:
+    # Perform checks on the variables given
+    # (e.g. columns existing, bams existing)
+
+    # start pipeline
+    projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
+
+    # Preprocess samples
+    variables = samples.columns.tolist()
+    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleNumber"]
+    [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
+
+    # track jobs to submit
+    jobs = dict()
+
     # diffBind
     if args.stage in ["all", "diffbind"]:
 
@@ -781,29 +853,30 @@ def comparison(args, logger):
                 if IP.upper() in ["INPUT", "IGG"]:  # skip groups with control
                     continue
 
-                jobName = projectName + "_" + "diffBind_sheet_{0}_{1}".format(genome, IP)
+                jobName = projectName + "_" + "diffBind_{0}_{1}".format(genome, IP)
                 diffBindSheetFile = os.path.join(projectDir, "runs", jobName + ".csv")
 
                 # make diffBind csv file, save it
-                makeDiffBindSheet(samples, samples.ix[IP_groups[IP]], diffBindSheetFile)
+                empty = makeDiffBindSheet(samples, samples.ix[IP_groups[IP]], os.path.join(dataDir, "peaks"), diffBindSheetFile)
 
-                # create job
-                jobCode = slurmHeader(
-                    jobName=jobName,
-                    output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
-                    queue=args.queue,
-                    time=args.time,
-                    cpusPerTask=args.cpus,
-                    memPerCpu=args.mem,
-                    userMail=args.user_mail
-                )
-                jobCode += diffBind(
-                    inputCSV=diffBindSheetFile,
-                    jobName=jobName,
-                    plotsDir=os.path.join(resultsDir, 'plots')
-                )
-                jobCode += slurmFooter()
-                jobs[jobName] = jobCode
+                if not empty:
+                    # create job
+                    jobCode = slurmHeader(
+                        jobName=jobName,
+                        output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
+                        queue=args.queue,
+                        time=args.time,
+                        cpusPerTask=args.cpus,
+                        memPerCpu=args.mem,
+                        userMail=args.user_mail
+                    )
+                    jobCode += diffBind(
+                        inputCSV=diffBindSheetFile,
+                        jobName=jobName,
+                        plotsDir=os.path.join(resultsDir, 'plots')
+                    )
+                    jobCode += slurmFooter()
+                    jobs[jobName] = jobCode
 
     # Submit jobs to slurm
     for jobName, jobCode in jobs.items():
@@ -830,7 +903,7 @@ def comparison(args, logger):
             os.path.join(projectDir, "runs", args.project_name + ".log"))
 
 
-def makeDiffBindSheet(samples, df, sheetFile):
+def makeDiffBindSheet(samples, df, peaksDir, sheetFile):
     """
     Prepares and saves a diffBind annotation sheet from a pandas.DataFrame annotation with standard columns.
     """
@@ -840,14 +913,20 @@ def makeDiffBindSheet(samples, df, sheetFile):
     df["treatment"] = df["treatment"] + "_" + df["patient"]
     df["ControlID"] = list(samples["sampleName"][list(df["controlSampleNumber"] - 1)])
     df["bamControl"] = list(samples["filePath"][list(df["controlSampleNumber"] - 1)])
-    df["Peaks"] = [os.path.join(args.dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak") for sampleName in df["sampleName"]]
+    df["Peaks"] = [os.path.join(peaksDir, sampleName, sampleName + "_peaks.narrowPeak") for sampleName in df["sampleName"]]
     df["PeakCaller"] = "macs"
     df = df[["sampleName", "cellLine", "ip", "condition", "treatment",
              "biologicalReplicate", "filePath", "ControlID", "bamControl", "Peaks", "PeakCaller"]]
-    df.columns = ["SampleID", "Tissue", "Factor", "Condition",  "Treatment",
+    df.columns = ["SampleID", "Tissue", "Factor", "Condition", "Treatment",
                   "Replicate", "bamReads", "ControlID", "bamControl", "Peaks", "PeakCaller"]
-    # save as csv
-    df.to_csv(sheetFile, index=False)  # check if format complies
+    # exclude samples without matched control
+    df = df[df["ControlID"].notnull()]
+    # if not empty
+    if not df.empty:
+        # save as csv
+        df.to_csv(sheetFile, index=False)  # check if format complies with DiffBind
+
+    return df.empty
 
 
 def slurmHeader(jobName, output, queue="shortq", ntasks=1, time="10:00:00",
@@ -1098,7 +1177,7 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, genome, tagmented=False):
     chmod 755 {3}
 
     """.format(inputBam, genomeSizes, transientFile, outputBigWig, genome,
-        os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
+               os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
     else:
         command = """
     # Making bigWig tracks from bam file
@@ -1131,9 +1210,9 @@ def addTrackToHub(sampleName, trackURL, trackHub, colour, fivePrime=""):
     echo "Adding track to TrackHub"
     echo 'track type=bigWig name="{0} {1}" description="{0} {1}""".format(sampleName, fivePrime)
     command += "height=32 maxHeightPixels 32:32:25 visibility=full"
-    command += """ bigDataUrl={0} color={1}' >> {1}
+    command += """ bigDataUrl={0} color={1}' >> {2}
 
-    chmod 755 {1}
+    chmod 755 {2}
 
     """.format(trackURL, colour, trackHub)
 
@@ -1216,7 +1295,10 @@ def homerFindMotifs(peakFile, genome, outputDir, size=150, length="8,10,12,14,16
     # Find motifs with Homer
     echo "finding motifs with Homer"
 
-    findMotifsGenome.pl {0} {1} {2} -mask -size {3} -len {4} -S {5}
+    findMotifsGenome.pl {0} \\
+    {1} \\
+    {2} \\
+    -mask -size {3} -len {4} -S {5}
 
     """.format(peakFile, genome, outputDir, size, length, n_motifs)
 
@@ -1228,8 +1310,11 @@ def AnnotatePeaks(peakFile, genome, motifFile, outputBed):
     # Annotate peaks with motif score
     echo "annotating peaks with motif score"
 
-    annotatePeaks.pl {0} {1} -mask -mscore -m {2} | \\
-    tail -n +2 | cut -f 1,5,22  > {3}
+    annotatePeaks.pl {0} \\
+    {1} \\
+    -mask -mscore -m {2} | \\
+    tail -n +2 | cut -f 1,5,22 \\
+    > {3}
     """.format(peakFile, genome, motifFile, outputBed)
 
     return command
@@ -1240,7 +1325,9 @@ def centerPeaksOnMotifs(peakFile, genome, windowWidth, motifFile, outputBed):
     # Center peaks on motif
     echo "centering peaks on motif"
 
-    annotatePeaks.pl {0} {1} -size {2} -center {3} | \\
+    annotatePeaks.pl {0} \\
+    {1} \\
+    -size {2} -center {3} | \\
     awk -v OFS='\\t' '{{print $2, $3, $4, $1, $6, $5}}' | \\
     python {5}/lib/fix_bedfile_genome_boundaries.py {1} | \\
     sortBed > {4}

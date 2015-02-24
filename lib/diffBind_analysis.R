@@ -10,11 +10,6 @@ jobName = args[2]
 plotsDir = args[3]
 
 
-csv = "/fhgfs/groups/lab_bock/shared/projects/chipmentation/runs/chipmentation_20150223-112336_diffBind_hg19_H3K4me1.csv"
-jobName = "chipmentation_20150223-112336_diffBind_hg19_H3K4me1"
-plotsDir = "/fhgfs/groups/lab_bock/shared/projects/chipmentation/results/plots"
-
-
 gRangesToBed <- function(df) {
     # Function to export GRanges object to bed
     bed = data.frame(

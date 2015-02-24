@@ -14,10 +14,8 @@ TODO: Adapt to allow run without --strand-specific!
 from argparse import ArgumentParser
 from collections import OrderedDict
 from rpy2.robjects.packages import importr
-from sklearn.cluster import k_means
 import cPickle as pickle
 import HTSeq
-import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
@@ -25,7 +23,6 @@ import pybedtools
 import re
 import rpy2.robjects as robj  # for ggplot in R
 import rpy2.robjects.pandas2ri  # for R dataframe conversion
-import seaborn as sns
 import sys
 
 
@@ -154,33 +151,14 @@ def main():
     # scale row signal to 0:1 (normalization)
     dfNorm = df.apply(lambda x: (x - min(x)) / (max(x) - min(x)), axis=1)
 
-    # TODO:
-    # replace with mini-batch k-means (usefull for samples > 10k)
-    # http://scikit-learn.org/stable/modules/generated/sklearn.cluster.MiniBatchKMeans.html#sklearn.cluster.MiniBatchKMeans
-    clust = k_means(dfNorm,
-                    args.n_clusters,
-                    n_init=25,
-                    max_iter=10000,
-                    n_jobs=2
-                    )  # returns centroid, label, inertia
+    # replace inf with 0s
+    dfNorm.replace([np.inf, -np.inf], 0, inplace=True)
 
-    # save object
-    pickle.dump(clust,
-                open(exportName + "_%i_kmeans_clusters.pickle" % args.n_clusters, "wb"),
-                protocol=pickle.HIGHEST_PROTOCOL
-                )
+    # sort by absolute read amounts
+    order = dfNorm.sum(axis=1)
+    order.sort(inplace=True, ascending=False)
 
-    # Sort dataframe by cluster order
-    dfNorm["cluster"] = clust[1]  # clust[1] <- label from k-means clustering
-    dfNorm.sort_index(by="cluster", axis=0, inplace=True)
-    dfNorm.drop("cluster", axis=1, inplace=True)
-
-    # Plot heatmap
-    plt.figure()
-    fig, ax = plt.subplots()
-    ax = sns.heatmap(dfNorm, linewidths=0.0, rasterized=True)
-    fig.savefig(exportName + "_%i_kmeans_clusters.pdf" % args.n_clusters)
-    plt.close()
+    dfNorm = dfNorm.reindex([order.index])
 
     # Export as cdt
     exportToJavaTreeView(dfNorm.copy(), exportName + "_%i_kmeans_clusters.normalized_clustered.cdt" % args.n_clusters)
@@ -218,8 +196,8 @@ def coverage(bam, intervals, fragmentsize, orientation=True, duplicates=True, st
     for name, feature in intervals.iteritems():
         if feature.chrom not in chroms:
             continue
-        if i % 1000 == 0:
-            print(len(intervals) - i)
+        # if i % 1000 == 0:
+        #    print(len(intervals) - i)
         # Initialize empty array for this feature
         if not strand_specific:
             profile = np.zeros(feature.length, dtype=np.int8)

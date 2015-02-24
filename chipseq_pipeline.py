@@ -90,7 +90,7 @@ def main():
     comparison_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
     comparison_subparser.add_argument('-s', '--stage', default="all", dest='stage',
                                       choices=["all", "callpeaks", "findmotifs", "centerpeaks",
-                                               "annotatepeaks", "peakanalysis", "tssanalysis", "footprints", "correlations"],
+                                               "annotatepeaks", "peakanalysis", "tssanalysis", "footprints"],
                                       help='Run only these stages. Default=all.', type=str)
     comparison_subparser.add_argument('--peak-caller', default="macs2", choices=["macs2", "spp"],
                                       dest='peak_caller', help='Peak caller to use. Default=macs2.', type=str)
@@ -106,7 +106,7 @@ def main():
     comparison_subparser.add_argument(dest='project_name', help="Project name.", type=str)
     comparison_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
     comparison_subparser.add_argument('-s', '--stage', default="all", dest='stage',
-                                      choices=["all", "diffbind"],
+                                      choices=["all", "diffbind", "correlations"],
                                       help='Run only these stages. Default=all.', type=str)
 
     # Parse

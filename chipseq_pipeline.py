@@ -136,6 +136,8 @@ def main():
     # Start main function
     if args.command == "preprocess":
         logger, fr, to = preprocess(args, logger)
+    elif args.command == "stats":
+        logger, fr, to = readStats(args, logger)
     elif args.command == "analyse":
         logger, fr, to = analyse(args, logger)
 
@@ -183,7 +185,9 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
         os.path.join(dataDir, "fastqc"),
         os.path.join(dataDir, "raw"),
         os.path.join(dataDir, "mapped"),
+        os.path.join(dataDir, "coverage"),
         os.path.join(dataDir, "peaks"),
+        os.path.join(dataDir, "motifs"),
         resultsDir,
         os.path.join(resultsDir, "plots"),
         htmlDir,
@@ -248,8 +252,8 @@ def preprocess(args, logger):
     # Paths to static files on the cluster
     genomeFolder = "/fhgfs/prod/ngs_resources/genomes/"
     genomeIndexes = {
-        "hg19": os.path.join(genomeFolder, "hg19/forBowtie2/hg19"),
-        "mm10": os.path.join(genomeFolder, "mm10/forBowtie2/mm10"),
+        "hg19": os.path.join(genomeFolder, "hg19/forBowtie2/withoutRandom/hg19"),
+        "mm10": os.path.join(genomeFolder, "mm10/forBowtie2/mm10/index_woRandom/mm10"),
         "dr7": os.path.join(genomeFolder, "dr7/forBowtie2/dr7")
     }
     genomeSizes = {
@@ -273,7 +277,7 @@ def preprocess(args, logger):
         "IGG": "153,153,153", "INPUT": "153,153,153",  # grey
         "H3K36ME1": "230,159,0", "H3K36ME2": "230,159,0", "H3K36ME3": "230,159,0",  # orange
         "H3K4ME3": "0,158,115",  # bluish green
-        "H3K4ME1": "240,228,66", "H3K14ac": "240,228,66",  # yellow
+        "H3K4ME1": "120,114,33", "H3K14ac": "120,114,33",  # yellow
         "H3K27ME1": "0,114,178", "H3K27ME2": "0,114,178", "H3K27ME3": "0,114,178",  # blue
         "H3K9ME1": "86,180,233", "H3K9ME2": "86,180,233", "H3K9ME3": "86,180,233",  # sky blue
         "H3AC": "213,94,0", "H3K9AC": "213,94,0", "H3K27AC": "213,94,0", "H3K56AC": "213,94,0", "H3K56AC": "213,94,0",  # vermillion
@@ -410,6 +414,7 @@ def preprocess(args, logger):
             jobCode += trimAdapters(
                 inputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq"),
                 outputFastq=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
+                cpus=args.cpus,
                 adapters=adapterFasta
             )
             tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"))
@@ -428,6 +433,7 @@ def preprocess(args, logger):
             if tagmented:
                 jobCode += shiftReads(
                     inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
+                    genome=samples["genome"][sample],
                     outputBam=bam + ".bam"
                 )
         if args.stage in ["all", "markduplicates"]:
@@ -524,6 +530,57 @@ def preprocess(args, logger):
     df.to_csv(os.path.join(projectDir, args.project_name + ".biol_replicates.annotation_sheet.csv"), index=False)
 
     logger.debug("Finished preprocessing")
+
+    return (logger,
+            os.path.join(os.getcwd(), args.project_name + ".log"),
+            os.path.join(projectDir, "runs", args.project_name + ".log"))
+
+
+def readStats(args, logger):
+    logger.info("Starting sample read stats.")
+
+    logger.debug("Checking project directories exist and creating if not.")
+    htmlDir, projectDir, dataDir, resultsDir, urlRoot = checkProjectDirs(args, logger)
+
+    # Parse sample information
+    args.csv = os.path.abspath(args.csv)
+
+    # check if exists and is a file
+    if not os.path.isfile(args.csv):
+        logger.error("Sample annotation '%s' does not exist, or user has no read access." % args.csv)
+        sys.exit(1)
+
+    # read in
+    samples = pd.read_csv(args.csv)
+
+    variables = samples.columns.tolist()
+    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleNumber"]
+    [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
+
+    cols = ["unpairedReadsExamined", "readPairsExamined", "unmappedReads", "unpairedReadDuplicates", "readPairDuplicates", "readPairOpticalDuplicates", "percentDuplication", "estimatedLibrarySize"]
+    for col in cols:
+        samples[col] = None
+
+    for sample in xrange(len(samples)):
+        # Sample name
+        # if sampleName is not provided, use a concatenation of several variable (excluding longest)
+        if str(samples["sampleName"][sample]) != "nan":
+            sampleName = samples["sampleName"][sample]
+        else:
+            sampleName = string.join([str(samples[var][sample]) for var in variables], sep="_")
+            logger.debug("No sample name provided, using concatenation of variables supplied")
+
+        # Get duplicates
+        dups = pd.read_csv(os.path.join(resultsDir, sampleName, ".duplicates.txt"), sep="\t", comment="#", header=1)
+        dups.dropna(thresh=len(dups.columns) - 1, inplace=True)
+
+        # Add values to sample sheet
+        samples[[cols]] = dups.drop(["LIBRARY"], axis=1)
+
+    # write annotation sheet with biological replicates
+    samples.to_csv(os.path.join(projectDir, args.project_name + ".read_stats.csv"), index=False)
+
+    logger.debug("Finished getting read statistics.")
 
     return (logger,
             os.path.join(os.getcwd(), args.project_name + ".log"),
@@ -804,7 +861,6 @@ def compare(args, logger):
     # start pipeline
     projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
 
-    # Preprocess samples
     variables = samples.columns.tolist()
     exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleNumber"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
@@ -1041,20 +1097,21 @@ def fastqc(inputFastq, outputDir):
     return command
 
 
-def trimAdapters(inputFastq, outputFastq, adapters):
+def trimAdapters(inputFastq, outputFastq, cpus, adapters):
     command = """
     # Trimming adapters from sample
     echo "Trimming adapters from sample"
     module load trimmomatic/0.32
 
-    java -jar `which trimmomatic-0.32.jar` SE {0} \\
+    java -jar `which trimmomatic-0.32.jar` SE -threads {0}
     {1} \\
-    ILLUMINACLIP:{2}:1:40:15 \\
+    {2} \\
+    ILLUMINACLIP:{3}:1:40:15 \\
     LEADING:3 TRAILING:3 \\
     SLIDINGWINDOW:4:10 \\
     MINLEN:36
 
-    """.format(inputFastq, outputFastq, adapters)
+    """.format(cpus, inputFastq, outputFastq, adapters)
 
     return command
 
@@ -1078,7 +1135,7 @@ def bowtie2Map(inputFastq, outputBam, genomeIndex, cpus):
     return command
 
 
-def shiftReads(inputBam, outputBam):
+def shiftReads(inputBam, genome, outputBam):
     outputBam = re.sub("\.bam$", "", outputBam)
     # TODO:
     # Implement read shifting with HTSeq or Cython
@@ -1089,11 +1146,11 @@ def shiftReads(inputBam, outputBam):
     module load python
 
     samtools view -h {0} | \\
-    python {2}/lib/shift_reads.py | \\
+    python {3}/lib/shift_reads.py {1} | \\
     samtools view -S -b - | \\
-    samtools sort - {1}
+    samtools sort - {2}
 
-    """.format(inputBam, outputBam,
+    """.format(inputBam, genome, outputBam,
                os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
 
     return command

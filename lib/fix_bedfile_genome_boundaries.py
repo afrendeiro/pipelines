@@ -15,15 +15,16 @@ def getChrSizes(chrmFile):
             chrmSizes[str(row[0])] = int(row[1])
     return chrmSizes
 
-wr = csv.writer(sys.stdout, delimiter='\t', lineterminator='\n')
-
 chrSizes = {
-    "hg19": "/fhgfs/prod/ngs_resources/genomes/hg19/hg19_chromLengths_sorted.txt",
-    "mm10": "/fhgfs/groups/lab_bock/arendeiro/share/mm10_chromlengths.txt"
+    "hg19": "/fhgfs/groups/lab_bock/arendeiro/share/hg19.chrom.sizes",
+    "mm10": "/fhgfs/groups/lab_bock/arendeiro/share/mm10.chrom.sizes",
+    "dr7": "/fhgfs/groups/lab_bock/arendeiro/share/danRer7.chrom.sizes"
 }
 
 genome = sys.argv[1]
 chrms = getChrSizes(chrSizes[genome])  # get size of chromosomes
+
+wr = csv.writer(sys.stdout, delimiter='\t', lineterminator='\n')
 
 for row in csv.reader(iter(sys.stdin.readline, ''), delimiter='\t'):
     chrm = row[0]

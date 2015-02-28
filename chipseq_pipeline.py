@@ -909,7 +909,6 @@ def compare(args, logger):
                     jobCode += slurmFooter()
                     jobs[jobName] = jobCode
 
-
     # Submit job for all samples together
     jobName = projectName + "_" + "sample_correlations"
 
@@ -1103,7 +1102,7 @@ def trimAdapters(inputFastq, outputFastq, cpus, adapters):
     echo "Trimming adapters from sample"
     module load trimmomatic/0.32
 
-    java -jar `which trimmomatic-0.32.jar` SE -threads {0}
+    java -jar `which trimmomatic-0.32.jar` SE -threads {0} \\
     {1} \\
     {2} \\
     ILLUMINACLIP:{3}:1:40:15 \\
@@ -1310,7 +1309,7 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broa
     elif genome == "mm10":
         genome = "mm"
     elif genome == "dr7":
-        raise ValueError("Genome dr7 not supported for peak calling with MACS2.")
+        raise ValueError("Genome dr7 not yet supported for peak calling with MACS2.")
 
     if not broad:
         # Check wth Christian if fragment length should be different for ChIP or CM
@@ -1321,7 +1320,7 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broa
     macs2 callpeak \\
     -t {0} \\
     -c {1} \\
-    --bw 180 \\
+    --bw 200 \\
     -g {2} -n {3} --outdir {4}
 
     """.format(treatmentBam, controlBam, genome, sampleName, outputDir)

@@ -34,26 +34,33 @@ def main(args):
     args = parser.parse_args()
 
     plotFunc = robj.r("""
-        library(ggplot2)
-        library(reshape2)
-
         function(df, path){
             # scatterplot
-            pdf(path, height = 7, width = 7)
+            pdf(path, height=7, width=7)
 
-            par(pty = "s")
+            par(pty="s")
 
-            smoothScatter(df[1], df[2], col = rgb(104,104,104,50 , maxColorValue = 255), pch = 16, nrpoints = 0, ann = FALSE, xaxt = 'n')
-            text(par('usr')[1] + 1.8, par('usr')[4] - 0.5,
-                bquote(R^2 == .(round(cor(A, B), 3))),
-                cex = 1.6
+            smoothScatter(
+                df,
+                col=rgb(104,104,104,50, maxColorValue=255),
+                pch=16,
+                nrpoints=0
             )
-            title(xlab = colnames(df)[1],
-                  ylab = colnames(df)[2],
-                  outer = TRUE, cex.lab = 1.5)
+            text(
+                par('usr')[1] + 1.8,
+                par('usr')[4] - 0.5,
+                bquote(R^2 == .(round(cor(df[1], df[2]), 3))),
+                cex=1.6
+            )
+            title(
+                xlab=colnames(df)[1],
+                ylab=colnames(df)[2],
+                outer=TRUE, cex.lab = 1.5
+            )
             dev.off()
         }
     """)
+
 
     # Get sample names
     names = [re.sub(os.path.basename(bam), "\.bam", "") for bam in args.bamfiles]
@@ -70,6 +77,8 @@ def main(args):
         rawSignals[names[bam]] = coverage(bamfile, windows, args.fragment_size, args.duplicates)
 
     df = pd.DataFrame(rawSignals)
+    # save as csv
+    df.to_csv(os.path.join(args.plots_dir, "correlations_rawSignals.csv"), index=False)
 
     # Normalize to library size
     dfNorm = df.apply(lambda x: np.log2(1 + (x / x.sum()) * 1000000))

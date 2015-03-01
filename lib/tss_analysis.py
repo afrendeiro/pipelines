@@ -94,7 +94,7 @@ def main():
                 geom_line() +
                 #stat_smooth(method = "gam", formula = y ~ s(x, k = 20), se = FALSE) +
                 facet_wrap(~variable, scales="free", ncol=3) +
-                xlab("Distance to peak") +
+                xlab("Distance to tss") +
                 ylab("Average tags per bp") +
                 theme_bw() +
                 theme(legend.title=element_blank()) +
@@ -108,7 +108,7 @@ def main():
                 geom_line() +
                 #stat_smooth(method = "gam", formula = y ~ s(x, k = 20), se = FALSE) +
                 facet_wrap(~variable, scales="free", ncol=3) +
-                xlab("Distance to peak") +
+                xlab("Distance to tss") +
                 ylab("Average tags per bp") +
                 theme_bw() +
                 theme(legend.title=element_blank()) +
@@ -122,7 +122,7 @@ def main():
                 geom_line() +
                 #stat_smooth(method = "gam", formula = y ~ s(x, k = 20), se = FALSE) +
                 facet_wrap(~variable, scales="free", ncol=3) +
-                xlab("Distance to peak") +
+                xlab("Distance to tss") +
                 ylab("Average tags per bp") +
                 theme_bw() +
                 theme(legend.title=element_blank()) +

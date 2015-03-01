@@ -320,7 +320,7 @@ def preprocess(args, logger):
 
         # Get sample name
         variables = samples.columns.tolist()
-        exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleName"]
+        exclude = ["sampleNumber", "sampleName", "filePath", "genome", "controlSampleName"]
         [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
         # if there's only one technical replicate keep it's name if available
@@ -554,7 +554,7 @@ def readStats(args, logger):
     samples = pd.read_csv(args.csv)
 
     variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleName"]
+    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "controlSampleName"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
     cols = ["unpairedReadsExamined", "readPairsExamined", "unmappedReads", "unpairedReadDuplicates", "readPairDuplicates", "readPairOpticalDuplicates", "percentDuplication", "estimatedLibrarySize"]
@@ -635,7 +635,7 @@ def analyse(args, logger):
 
     # Preprocess samples
     variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleName"]
+    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "controlSampleName"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
     # track jobs to submit
@@ -860,7 +860,7 @@ def compare(args, logger):
     projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
 
     variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleName"]
+    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "controlSampleName"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
     # track jobs to submit
@@ -1336,6 +1336,18 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broa
     -g {2} -n {3} --outdir {4}
 
     """.format(treatmentBam, controlBam, genome, sampleName, outputDir)
+
+    command += """
+    # Plot MACS2 crosscorrelation
+
+    echo "Plotting MACS2 crosscorrelation"
+    module load R
+
+    Rscript {0}/{1}_model.r
+
+    mv {2}/{1}_model.pdf {0}/{1}_model.pdf
+
+    """.format(outputDir, sampleName, os.getcwd())
 
     return command
 

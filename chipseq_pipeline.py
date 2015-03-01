@@ -225,7 +225,7 @@ def checkTechnicalReplicates(samples):
     """
     # Check if there are technical replicates
     variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "technicalReplicate", "filePath", "controlSampleNumber"]
+    exclude = ["sampleNumber", "sampleName", "technicalReplicate", "filePath", "controlSampleName"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
     unique = samples.replace(np.nan, -1).groupby(variables).apply(len).index.values
@@ -320,7 +320,7 @@ def preprocess(args, logger):
 
         # Get sample name
         variables = samples.columns.tolist()
-        exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleNumber"]
+        exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleName"]
         [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
         # if there's only one technical replicate keep it's name if available
@@ -526,7 +526,7 @@ def preprocess(args, logger):
 
     # write annotation sheet with biological replicates
     df = pd.DataFrame(samplesMerged)
-    df["controlSampleNumber"] = None
+    df["controlSampleName"] = None
     df.to_csv(os.path.join(projectDir, args.project_name + ".biol_replicates.annotation_sheet.csv"), index=False)
 
     logger.debug("Finished preprocessing")
@@ -554,7 +554,7 @@ def readStats(args, logger):
     samples = pd.read_csv(args.csv)
 
     variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleNumber"]
+    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleName"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
     cols = ["unpairedReadsExamined", "readPairsExamined", "unmappedReads", "unpairedReadDuplicates", "readPairDuplicates", "readPairOpticalDuplicates", "percentDuplication", "estimatedLibrarySize"]
@@ -635,7 +635,7 @@ def analyse(args, logger):
 
     # Preprocess samples
     variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleNumber"]
+    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleName"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
     # track jobs to submit
@@ -652,16 +652,14 @@ def analyse(args, logger):
 
         # Control name
         control = False
-        if not np.isnan(samples.ix[sample]["controlSampleNumber"]):
-            control = True
-            controlIdx = int(samples.ix[sample]["controlSampleNumber"]) - 1  # zero-based
+        # get file path of sample which this sample's controlName is pointing to
+        ctrlField = samples[samples['sampleName'].isin([samples['controlSampleName'][sample]])]['filePath']
 
-            # if sampleName is not provided, use a concatenation of several variable (excluding longest)
-            if str(samples["sampleName"][controlIdx]) != "nan":
-                controlName = samples["sampleName"][controlIdx]
-            else:
-                controlName = string.join([str(samples[var][controlIdx]) for var in variables], sep="_")
-                logger.debug("No sample name provided, using concatenation of variables supplied")
+        # if there is only one record, use that as control
+        if len(ctrlField) == 1:
+            control = True
+            controlName = samples.ix[sample]["controlSampleName"]
+            controlBam = os.path.abspath(ctrlField.values[0])
 
         # check if sample is tagmented or not:
         tagmented = True if samples["technique"][sample] in tagment else False
@@ -693,7 +691,7 @@ def analyse(args, logger):
                 # For broad factors use broad settings
                 jobCode += macs2CallPeaks(
                     treatmentBam=os.path.abspath(samples['filePath'][sample]),
-                    controlBam=os.path.abspath(samples['filePath'][controlIdx]),
+                    controlBam=controlBam,
                     outputDir=os.path.join(dataDir, "peaks", sampleName),
                     sampleName=sampleName,
                     genome=samples['genome'][sample],
@@ -704,7 +702,7 @@ def analyse(args, logger):
                 # For broad factors use broad settings
                 jobCode += sppCallPeaks(
                     treatmentBam=os.path.abspath(samples['filePath'][sample]),
-                    controlBam=os.path.abspath(samples['filePath'][controlIdx]),
+                    controlBam=controlBam,
                     treatmentName=sampleName,
                     controlName=controlName,
                     outputDir=os.path.join(dataDir, "peaks", sampleName),
@@ -862,7 +860,7 @@ def compare(args, logger):
     projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
 
     variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleNumber"]
+    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "tagmented", "controlSampleName"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
     # track jobs to submit
@@ -968,8 +966,8 @@ def makeDiffBindSheet(samples, df, peaksDir, sheetFile):
         df[col] = df[col].apply(str)
     df["condition"] = df["numberCells"] + "_" + df["technique"]
     df["treatment"] = df["treatment"] + "_" + df["patient"]
-    df["ControlID"] = list(samples["sampleName"][list(df["controlSampleNumber"] - 1)])
-    df["bamControl"] = list(samples["filePath"][list(df["controlSampleNumber"] - 1)])
+    df["ControlID"] = list(samples["sampleName"][list(df["controlSampleName"] - 1)])
+    df["bamControl"] = list(samples["filePath"][list(df["controlSampleName"] - 1)])
     df["Peaks"] = [os.path.join(peaksDir, sampleName, sampleName + "_peaks.narrowPeak") for sampleName in df["sampleName"]]
     df["PeakCaller"] = "macs"
     df = df[["sampleName", "cellLine", "ip", "condition", "treatment",

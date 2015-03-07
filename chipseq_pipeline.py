@@ -24,7 +24,7 @@ pd.options.mode.chained_assignment = None
 __author__ = "Andre Rendeiro"
 __copyright__ = "Copyright 2014, Andre Rendeiro"
 __credits__ = []
-__license__ = "GPL3"
+__license__ = "GPL2"
 __version__ = "0.1"
 __maintainer__ = "Andre Rendeiro"
 __email__ = "arendeiro@cemm.oeaw.ac.at"
@@ -33,86 +33,100 @@ __status__ = "Development"
 
 def main():
     # Parse command-line arguments
-    parser = ArgumentParser(description='ChIP-seq pipeline.')
+    parser = ArgumentParser(description="ChIP-seq pipeline.")
 
     # Global options
     # positional arguments
     # optional arguments
-    parser.add_argument('-r', '--project-root', default="/fhgfs/groups/lab_bock/shared/projects/",
-                        dest='project_root', type=str,
-                        help='Directory in which the project will reside. Default=/fhgfs/groups/lab_bock/shared/projects/.')
-    parser.add_argument('--html-root', default="/fhgfs/groups/lab_bock/public_html/arendeiro/",
-                        dest='html_root', type=str,
-                        help='public_html directory in which bigwig files for the project will reside. Default=/fhgfs/groups/lab_bock/public_html/.')
-    parser.add_argument('--url-root', default="http://www.biomedical-sequencing.at/bocklab/arendeiro/",
-                        dest='url_root', type=str,
-                        help='Url mapping to public_html directory where bigwig files for the project will be accessed. Default=http://www.biomedical-sequencing.at/bocklab.')
-    parser.add_argument('--keep-tmp-files', dest='keep_tmp', action='store_true',
-                        help='Keep intermediary files. If not it will only preserve final files. Default=False.')
-    parser.add_argument('-c', '--cpus', default=16, dest='cpus',
-                        help='Number of CPUs to use. Default=16.', type=int)
-    parser.add_argument('-m', '--mem-per-cpu', default=2000, dest='mem',
-                        help='Memory per CPU to use. Default=2000.', type=int)
-    parser.add_argument('-q', '--queue', default="shortq", dest='queue',
+    parser.add_argument("-r", "--project-root", default="/fhgfs/groups/lab_bock/shared/projects/",
+                        dest="project_root", type=str,
+                        help="""Directory in which the project will reside.
+                        Default=/fhgfs/groups/lab_bock/shared/projects/.""")
+    parser.add_argument("--html-root", default="/fhgfs/groups/lab_bock/public_html/arendeiro/",
+                        dest="html_root", type=str,
+                        help="""public_html directory in which bigwig files for the project will reside.
+                        Default=/fhgfs/groups/lab_bock/public_html/.""")
+    parser.add_argument("--url-root", default="http://www.biomedical-sequencing.at/bocklab/arendeiro/",
+                        dest="url_root", type=str,
+                        help="""Url mapping to public_html directory where bigwig files for the project will be accessed.
+                        Default=http://www.biomedical-sequencing.at/bocklab.""")
+    parser.add_argument("--keep-tmp-files", dest="keep_tmp", action="store_true",
+                        help="Keep intermediary files. If not it will only preserve final files. Default=False.")
+    parser.add_argument("-c", "--cpus", default=16, dest="cpus",
+                        help="Number of CPUs to use. Default=16.", type=int)
+    parser.add_argument("-m", "--mem-per-cpu", default=2000, dest="mem",
+                        help="Memory per CPU to use. Default=2000.", type=int)
+    parser.add_argument("-q", "--queue", default="shortq", dest="queue",
                         choices=["develop", "shortq", "mediumq", "longq"],
-                        help='Queue to submit jobs to. Default=shortq', type=str)
-    parser.add_argument('-t', '--time', default="10:00:00", dest='time',
-                        help='Maximum time for jobs to run. Default=10:00:00', type=str)
-    parser.add_argument('--user-mail', default="", dest='user_mail',
-                        help='User mail address. Default=<submitting user>.', type=str)
-    parser.add_argument('-l', '--log-level', default="INFO", dest='log_level',
-                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help='Logging level. Default=INFO.', type=str)
-    parser.add_argument('--dry-run', dest='dry_run', action='store_true',
-                        help='Dry run. Assemble commands, but do not submit jobs to slurm. Default=False.')
+                        help="Queue to submit jobs to. Default=shortq", type=str)
+    parser.add_argument("-t", "--time", default="10:00:00", dest="time",
+                        help="Maximum time for jobs to run. Default=10:00:00", type=str)
+    parser.add_argument("--user-mail", default="", dest="user_mail",
+                        help="User mail address. Default=<submitting user>.", type=str)
+    parser.add_argument("-l", "--log-level", default="INFO", dest="log_level",
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                        help="Logging level. Default=INFO.", type=str)
+    parser.add_argument("--dry-run", dest="dry_run", action="store_true",
+                        help="Dry run. Assemble commands, but do not submit jobs to slurm. Default=False.")
 
     # Sub commands
-    subparser = parser.add_subparsers(title='sub-command', dest="command")
+    subparser = parser.add_subparsers(title="sub-command", dest="command")
     # preprocess
     preprocess_subparser = subparser.add_parser("preprocess")
-    preprocess_subparser.add_argument(dest='project_name', help="Project name.", type=str)
-    preprocess_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
-    preprocess_subparser.add_argument('-s', '--stage', default="all", dest='stage',
+    preprocess_subparser.add_argument(dest="project_name", help="Project name.", type=str)
+    preprocess_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
+    preprocess_subparser.add_argument("-s", "--stage", default="all", dest="stage",
                                       choices=["all", "bam2fastq", "fastqc", "trimming", "mapping",
                                                "shiftreads", "markduplicates", "removeduplicates",
                                                "indexbam", "qc", "maketracks"],
-                                      help='Run only these stages. Default=all.', type=str)
+                                      help="Run only these stages. Default=all.", type=str)
 
     # preprocess
     preprocess_subparser = subparser.add_parser("stats")
-    preprocess_subparser.add_argument(dest='project_name', help="Project name.", type=str)
-    preprocess_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
+    preprocess_subparser.add_argument(dest="project_name", help="Project name.", type=str)
+    preprocess_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
 
     # analyse
     comparison_subparser = subparser.add_parser("analyse")
-    comparison_subparser.add_argument(dest='project_name', help="Project name.", type=str)
-    comparison_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
-    comparison_subparser.add_argument('-s', '--stage', default="all", dest='stage',
+    comparison_subparser.add_argument(dest="project_name", help="Project name.", type=str)
+    comparison_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
+    comparison_subparser.add_argument("-s", "--stage", default="all", dest="stage",
                                       choices=["all", "callpeaks", "findmotifs", "centerpeaks",
                                                "annotatepeaks", "peakanalysis", "tssanalysis", "footprints"],
-                                      help='Run only these stages. Default=all.', type=str)
-    comparison_subparser.add_argument('--peak-caller', default="macs2", choices=["macs2", "spp"],
-                                      dest='peak_caller', help='Peak caller to use. Default=macs2.', type=str)
-    comparison_subparser.add_argument('--peak-window-width', default=2000,
-                                      dest='peak_window_width', help='Width of window around peak motifs. Default=2000.', type=int)
-    comparison_subparser.add_argument('--duplicates', dest='duplicates', action='store_true',
-                                      help='Allow duplicates in coorelation analysis. Default=False.')
-    comparison_subparser.add_argument('--genome-window-width', default=1000,
-                                      dest='genome_window_width', help='Width of window to make genome-wide correlations. Default=1000.', type=int)
+                                      help="Run only these stages. Default=all.", type=str)
+    comparison_subparser.add_argument("--peak-caller", default="macs2", choices=["macs2", "spp"],
+                                      dest="peak_caller", help="Peak caller to use. Default=macs2.", type=str)
+    comparison_subparser.add_argument("--peak-window-width", default=2000,
+                                      dest="peak_window_width",
+                                      help="Width of window around peak motifs. Default=2000.",
+                                      type=int)
+    comparison_subparser.add_argument("--duplicates", dest="duplicates", action="store_true",
+                                      help="Allow duplicates in coorelation analysis. Default=False.")
+    comparison_subparser.add_argument("--genome-window-width", default=1000,
+                                      dest="genome_window_width",
+                                      help="Width of window to make genome-wide correlations. Default=1000.",
+                                      type=int)
 
     # compare
     comparison_subparser = subparser.add_parser("compare")
-    comparison_subparser.add_argument(dest='project_name', help="Project name.", type=str)
-    comparison_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
-    comparison_subparser.add_argument('-s', '--stage', default="all", dest='stage',
+    comparison_subparser.add_argument(dest="project_name", help="Project name.", type=str)
+    comparison_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
+    comparison_subparser.add_argument("-s", "--stage", default="all", dest="stage",
                                       choices=["all", "diffbind", "correlations"],
-                                      help='Run only these stages. Default=all.', type=str)
+                                      help="Run only these stages. Default=all.", type=str)
 
     # Parse
     args = parser.parse_args()
 
     # Logging
     logger = logging.getLogger(__name__)
-    levels = {"DEBUG": logging.DEBUG, "INFO": logging.INFO, 'WARNING': logging.WARNING, "ERROR": logging.ERROR, "CRITICAL": logging.CRITICAL}
+    levels = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL
+    }
     logger.setLevel(levels[args.log_level])
 
     # create a file handler
@@ -215,30 +229,62 @@ Use option '--html-root' to set a non-default html root path." % htmlDir)
     return (htmlDir, projectDir, dataDir, resultsDir, urlRoot)
 
 
-def checkTechnicalReplicates(samples):
+def getReplicates(samples):
     """
-    returns dictionary with entries and list of pd.Series with sample info
+    Returns new sample annotation sheet with provided samples, plus biological replicates
+    (merged technical replicates) and merged biological replicates.
     samples - a pandas.DataFrame with sample info.
 
     """
-    # Check if there are technical replicates
+    # ignore some fields in the annotation sheet
     variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "technicalReplicate", "filePath", "controlSampleName"]
+    exclude = ["sampleNumber", "sampleName", "experimentName", "filePath", "controlSampleName"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
+    varsName = list(variables)
 
-    unique = samples.replace(np.nan, -1).groupby(variables).apply(len).index.values
+    # get sample names
+    samples["sampleName"] = ["_".join([str(j) for j in samples.ix[i][variables]]) for i in samples.index]
 
-    biologicalReplicates = dict()
-    for sample in xrange(len(unique)):
-        replicate = pd.Series(unique[sample], index=variables)
-        for row in xrange(len(samples.replace(np.nan, -1)[variables])):
-            if (replicate == samples.replace(np.nan, -1)[variables].ix[row]).all():
-                if sample not in biologicalReplicates:
-                    biologicalReplicates[sample] = [samples.ix[row]]
-                else:
-                    biologicalReplicates[sample] += [samples.ix[row]]
+    samplesMerged = samples.copy()
 
-    return biologicalReplicates
+    # get merged technical replicates -> biological replicates
+    variables.pop(variables.index("technicalReplicate"))
+
+    groups = samples.groupby(variables).groups
+    for key, values in samples.groupby(variables).groups.items():
+        rep = samples.ix[values][varsName].reset_index(drop=True).ix[0]
+        rep["experimentName"] = np.nan
+        rep["technicalReplicate"] = 0
+        rep["filePath"] = samples.ix[values]["filePath"].tolist()
+        rep["sampleName"] = "_".join([str(i) for i in rep[varsName]])
+
+        # append biological replicate to sample annotation
+        samplesMerged = samplesMerged.append(rep, ignore_index=True)
+
+    # get merged biological replicates -> merged biological replicates
+    variables.pop(variables.index("biologicalReplicate"))
+
+    groups = samples.groupby(variables).groups
+    for key, values in samples.groupby(variables).groups.items():
+        rep = samples.ix[values][varsName].reset_index(drop=True).ix[0]
+        rep["experimentName"] = np.nan
+        rep["technicalReplicate"] = 0
+        rep["biologicalReplicate"] = 0
+        rep["filePath"] = samples.ix[values]["filePath"].tolist()
+        rep["sampleName"] = "_".join([str(i) for i in rep[varsName]])
+
+        # append biological replicate to sample annotation
+        samplesMerged = samplesMerged.append(rep, ignore_index=True)
+
+    # add field for manual sample pairing
+    samplesMerged["controlSampleName"] = None
+
+    # replace sample name with list of sample names for only one sample (original case)
+    for i in range(len(samplesMerged)):
+        if type(samplesMerged["filePath"][i]) is not list:
+            samplesMerged["filePath"][i] = [samplesMerged["filePath"][i]]
+
+    return samplesMerged.sort(["sampleName"])
 
 
 def preprocess(args, logger):
@@ -310,71 +356,40 @@ def preprocess(args, logger):
     # start pipeline
     projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
 
-    # Get biological replicates from technical
-    logger.debug("Checking which technical replicates form biological replicates.")
-    biologicalReplicates = checkTechnicalReplicates(samples)  # sorted differently than input annotation
+    # Get biological replicates and merged biological replicates
+    logger.debug("Checking which samples should be merged.")
+    samplesMerged = getReplicates(samples)  # <- this is the new annotation sheet as well
 
-    # Preprocess biological replicates
-    samplesMerged = list()
-    for sample in xrange(len(biologicalReplicates)):
-        if len(biologicalReplicates) == 0:
-            logger.error("No samples in sheet.")
-            sys.exit(1)
-
+    # Preprocess samples
+    for sample in range(len(samplesMerged)):
         # Get sample name
-        variables = samples.columns.tolist()
-        exclude = ["sampleNumber", "sampleName", "filePath", "genome", "controlSampleName"]
-        [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
-
-        # if there's only one technical replicate keep it's name if available
-        if len(biologicalReplicates.values()[sample]) == 1:
-            s = biologicalReplicates.values()[sample][0]
-            # if sampleName is not provided, use a concatenation of several variable (excluding longest)
-            if str(s["sampleName"]) != "nan":
-                sampleName = samples["sampleName"]
-            else:
-                sampleName = string.join([str(s[var]) for var in variables], sep="_")
-                logger.debug("No sample name provided, using concatenation of variables supplied")
-        # if there's more than one technical replicate get a name
-        elif len(biologicalReplicates.values()[sample]) > 1:
-            s = biologicalReplicates[sample][0]
-            s["technicalReplicate"] = 0
-            sampleName = string.join([str(s[var]) for var in variables], sep="_")
-
-        # add sample name to series
-        s = biologicalReplicates[sample][0]
-        s['sampleName'] = sampleName
+        sampleName = samplesMerged["sampleName"][sample]
 
         # get jobname
         jobName = projectName + "_" + sampleName
 
         # check if sample is paired end
-        PE = checkSamplePE(biologicalReplicates.values()[0]["filePath"])
+        PE = checkSamplePE(samplesMerged["filePath"][sample][0])
 
         # check if sample is tagmented or not:
-        tagmented = True if biologicalReplicates[sample][0]["technique"] in tagment else False
+        tagmented = True if samplesMerged["technique"][sample] in tagment else False
 
         # get intermediate names for files
+        if len(samplesMerged["filePath"][sample]) == 1:
+            unmappedBam = samplesMerged["filePath"][sample][0]
+        else:
+            unmappedBam = os.path.join(dataDir, "raw", sampleName + ".bam")
+
         if not tagmented:
             bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2")
         else:
             bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted")
 
-        if len(biologicalReplicates.values()[sample]) == 1:
-            unmappedBam = biologicalReplicates.values()[sample][0]["filePath"]
-        else:
-            unmappedBam = os.path.join(dataDir, "raw", sampleName + ".bam")
-
         # get colour for tracks
-        if samples["ip"][sample].upper() in colours.keys():
-            colour = colours[samples["ip"][sample].upper()]
+        if samplesMerged["ip"][sample].upper() in colours.keys():
+            colour = colours[samplesMerged["ip"][sample].upper()]
         else:
             colour = random.sample(colour_gradient, 1)[0]  # pick one randomly
-
-        # append to list of Biological Replicates
-        toAppend = s.copy()
-        toAppend['filePath'] = bam + ".dups.bam"  # bam file of merged sample if several technical replicates
-        samplesMerged.append(toAppend)
 
         # keep track of temporary files
         tempFiles = list()
@@ -392,9 +407,9 @@ def preprocess(args, logger):
         )
         if args.stage in ["all"]:
             # if more than one technical replicate, merge bams
-            if len(biologicalReplicates.values()[sample]) > 1:
+            if len(samplesMerged["filePath"][sample]) > 1:
                 jobCode += mergeBams(
-                    inputBams=[ss["filePath"] for ss in biologicalReplicates.values()[sample]],
+                    inputBams=samplesMerged["filePath"][sample],  # this is a list of sample paths
                     outputBam=unmappedBam
                 )
         if args.stage in ["all", "fastqc"]:
@@ -455,15 +470,15 @@ def preprocess(args, logger):
                 tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_2_unpaired.trimmed.fastq"))
 
         if args.stage in ["all", "mapping"]:
-            if samples["genome"][sample] not in genomeIndexes:
-                logger.error("Sample %s has unsuported genome index: %s" % (sampleName, samples["genome"][sample]))
+            if samplesMerged["genome"][sample] not in genomeIndexes:
+                logger.error("Sample %s has unsuported genome index: %s" % (sampleName, samplesMerged["genome"][sample]))
                 sys.exit(1)
             if not PE:
                 jobCode += bowtie2Map(
                     inputFastq=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
                     outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
                     log=os.path.join(resultsDir, sampleName + ".alnRates.txt"),
-                    genomeIndex=genomeIndexes[samples["genome"][sample]],
+                    genomeIndex=genomeIndexes[samplesMerged["genome"][sample]],
                     cpus=args.cpus
                 )
             else:
@@ -471,7 +486,7 @@ def preprocess(args, logger):
                     inputFastq=os.path.join(dataDir, "fastq", sampleName + "_1.trimmed.fastq"),
                     outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
                     log=os.path.join(resultsDir, sampleName + ".alnRates.txt"),
-                    genomeIndex=genomeIndexes[samples["genome"][sample]],
+                    genomeIndex=genomeIndexes[samplesMerged["genome"][sample]],
                     cpus=args.cpus,
                     inputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.trimmed.fastq")
                 )
@@ -480,7 +495,7 @@ def preprocess(args, logger):
             if tagmented:
                 jobCode += shiftReads(
                     inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
-                    genome=samples["genome"][sample],
+                    genome=samplesMerged["genome"][sample],
                     outputBam=bam + ".bam"
                 )
         if args.stage in ["all", "markduplicates"]:
@@ -508,35 +523,35 @@ def preprocess(args, logger):
             jobCode += bamToUCSC(
                 inputBam=bam + ".dups.bam",
                 outputBigWig=os.path.join(htmlDir, sampleName + ".bigWig"),
-                genomeSizes=genomeSizes[samples["genome"][sample]],
-                genome=samples["genome"][sample],
+                genomeSizes=genomeSizes[samplesMerged["genome"][sample]],
+                genome=samplesMerged["genome"][sample],
                 tagmented=False
             )
             jobCode += addTrackToHub(
                 sampleName=sampleName,
                 trackURL=urlRoot + sampleName + ".bigWig",
-                trackHub=os.path.join(htmlDir, "trackHub_{0}.txt".format(samples["genome"][sample])),
+                trackHub=os.path.join(htmlDir, "trackHub_{0}.txt".format(samplesMerged["genome"][sample])),
                 colour=colour
             )
             if tagmented:
                 jobCode += bamToUCSC(
                     inputBam=bam + ".dups.bam",
                     outputBigWig=os.path.join(htmlDir, sampleName + ".5prime.bigWig"),
-                    genomeSizes=genomeSizes[samples["genome"][sample]],
-                    genome=samples["genome"][sample],
+                    genomeSizes=genomeSizes[samplesMerged["genome"][sample]],
+                    genome=samplesMerged["genome"][sample],
                     tagmented=True
                 )
                 jobCode += addTrackToHub(
                     sampleName=sampleName,
                     trackURL=urlRoot + sampleName + ".5prime.bigWig",
-                    trackHub=os.path.join(htmlDir, "trackHub_{0}.txt".format(samples["genome"][sample])),
+                    trackHub=os.path.join(htmlDir, "trackHub_{0}.txt".format(samplesMerged["genome"][sample])),
                     fivePrime="5prime",
                     colour=colour
                 )
             linkToTrackHub(
-                trackHubURL="{0}/{1}/bigWig/trackHub_{2}.txt".format(args.url_root, args.project_name, samples["genome"][sample]),
-                fileName=os.path.join(projectDir, "ucsc_tracks_{0}.html".format(samples["genome"][sample])),
-                genome=samples["genome"][sample]
+                trackHubURL="{0}/{1}/bigWig/trackHub_{2}.txt".format(args.url_root, args.project_name, samplesMerged["genome"][sample]),
+                fileName=os.path.join(projectDir, "ucsc_tracks_{0}.html".format(samplesMerged["genome"][sample])),
+                genome=samplesMerged["genome"][sample]
             )
 
         # if args.stage in ["all", "qc"]:
@@ -571,13 +586,13 @@ def preprocess(args, logger):
                 sys.exit(1)
             logger.debug("Project '%s'submission finished successfully." % args.project_name)
 
+        #  Write location of bam file in merged samples annotation sheet
+        samplesMerged['filePath'][sample] = bam + ".dups.bam"
+
     # write original annotation sheet to project folder
     samples.to_csv(os.path.join(projectDir, args.project_name + ".annotation_sheet.csv"), index=False)
-
     # write annotation sheet with biological replicates to project folder
-    df = pd.DataFrame(samplesMerged)
-    df["controlSampleName"] = None
-    df.to_csv(os.path.join(projectDir, args.project_name + ".biol_replicates.annotation_sheet.csv"), index=False)
+    samplesMerged.to_csv(os.path.join(projectDir, args.project_name + ".biol_replicates.annotation_sheet.csv"), index=False)
 
     logger.debug("Finished preprocessing")
 
@@ -588,7 +603,7 @@ def preprocess(args, logger):
 
 def readStats(args, logger):
     """
-    Given an annotation sheet with biologicalReplicates, gets number of reads mapped, duplicates, etc...
+    Given an annotation sheet with replicates, gets number of reads mapped, duplicates, etc...
     """
 
     logger.info("Starting sample read stats.")
@@ -611,7 +626,8 @@ def readStats(args, logger):
     exclude = ["sampleNumber", "sampleName", "filePath", "genome", "controlSampleName"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
-    cols = ["unpairedReadsExamined", "readPairsExamined", "unmappedReads", "unpairedReadDuplicates", "readPairDuplicates", "readPairOpticalDuplicates", "percentDuplication", "estimatedLibrarySize"]
+    cols = ["unpairedReadsExamined", "readPairsExamined", "unmappedReads", "unpairedReadDuplicates",
+            "readPairDuplicates", "readPairOpticalDuplicates", "percentDuplication", "estimatedLibrarySize"]
     for col in cols:
         samples[col] = None
 
@@ -625,7 +641,7 @@ def readStats(args, logger):
             logger.debug("No sample name provided, using concatenation of variables supplied")
 
         # TODO:
-        # Get read numbers and alignment rates from 
+        # Get read numbers and alignment rates from
         # os.path.join(resultsDir, sampleName + ".alnRates.txt"),
 
         # Get duplicates
@@ -886,6 +902,9 @@ def analyse(args, logger):
                 sys.exit(1)
             logger.debug("Project '%s'submission finished successfully." % args.project_name)
 
+    # write original annotation sheet to project folder
+    samples.to_csv(os.path.join(projectDir, args.project_name + ".biol_replicates.annotation_sheet.csv"), index=False)
+
     logger.debug("Finished comparison")
 
     return (logger,
@@ -1108,7 +1127,6 @@ def slurmSubmitJob(jobFile):
 def removeFile(fileName):
     command = """
     # Removing file
-
     rm {0}
     """.format(fileName)
 
@@ -1166,9 +1184,9 @@ def bam2fastq(inputBam, outputFastq, outputFastq2=None, unpairedFastq=None):
         command += "FASTQ={0}".format(outputFastq)
     else:
         command += """FASTQ={0} \\
-        SECOND_END_FASTQ={1} \\
-        UNPAIRED_FASTQ={2}
-        """.format(outputFastq, outputFastq2, unpairedFastq)
+    SECOND_END_FASTQ={1} \\
+    UNPAIRED_FASTQ={2}
+    """.format(outputFastq, outputFastq2, unpairedFastq)
 
     return command
 

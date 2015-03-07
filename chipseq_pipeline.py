@@ -25,6 +25,7 @@ import re
 import string
 import textwrap
 import shutil
+import subprocess
 
 # TODO: solve pandas chained assignments
 pd.options.mode.chained_assignment = None
@@ -261,7 +262,7 @@ def preprocess(args, logger):
         "mm10": "/fhgfs/groups/lab_bock/arendeiro/share/mm10.chrom.sizes",
         "dr7": "/fhgfs/groups/lab_bock/arendeiro/share/danRer7.chrom.sizes"
     }
-    adapterFasta = "/fhgfs/groups/lab_bock/shared/chipmentation.fa"
+    adapterFasta = "/fhgfs/groups/lab_bock/shared/cm.fa"
 
     # Other static info
     tagment = [
@@ -345,13 +346,22 @@ def preprocess(args, logger):
         # get jobname
         jobName = projectName + "_" + sampleName
 
+        # check if sample is paired end
+        PE = checkSamplePE(biologicalReplicates.values()[0]["filePath"])
+
         # check if sample is tagmented or not:
         tagmented = True if biologicalReplicates[sample][0]["technique"] in tagment else False
 
+        # get intermediate names for files
         if not tagmented:
             bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2")
         else:
             bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted")
+
+        if len(biologicalReplicates.values()[sample]) == 1:
+            unmappedBam = biologicalReplicates.values()[sample][0]["filePath"]
+        else:
+            unmappedBam = os.path.join(dataDir, "raw", sampleName + ".bam")
 
         # get colour for tracks
         if samples["ip"][sample].upper() in colours.keys():
@@ -383,51 +393,84 @@ def preprocess(args, logger):
             if len(biologicalReplicates.values()[sample]) > 1:
                 jobCode += mergeBams(
                     inputBams=[ss["filePath"] for ss in biologicalReplicates.values()[sample]],
-                    outputBam=os.path.join(dataDir, "raw", sampleName + ".bam")
+                    outputBam=unmappedBam
                 )
-
-            # convert bam to fastq
-            if args.stage in ["all", "bam2fastq"]:
-                if len(biologicalReplicates.values()[sample]) == 1:
-                    jobCode += bam2fastq(
-                        inputBam=biologicalReplicates.values()[sample][0]["filePath"],
-                        outputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq")
-                    )
-                elif len(biologicalReplicates.values()[sample]) >= 1:
-                    jobCode += bam2fastq(
-                        inputBam=os.path.join(dataDir, "raw", sampleName + ".bam"),
-                        outputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq")
-                    )
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".fastq"))
         if args.stage in ["all", "fastqc"]:
             # TODO:
             # Fastqc should be independent from this job but since there's no option in fastqc to specify
             # the sample name, I'll for now run it on the already renamed fastq file produced before,
             # which requires fastqc to run in the same job as the rest :S
             jobCode += fastqc(
-                inputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq"),
+                inputBam=unmappedBam,
                 outputDir=os.path.join(dataDir, "fastqc")
             )
+        # convert bam to fastq
+        if args.stage in ["all", "bam2fastq"]:
+            if not PE:
+                jobCode += bam2fastq(
+                    inputBam=unmappedBam,
+                    outputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq")
+                )
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".fastq"))
+            else:
+                jobCode += bam2fastq(
+                    inputBam=unmappedBam,
+                    outputFastq=os.path.join(dataDir, "fastq", sampleName + "_1.fastq"),
+                    outputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.fastq"),
+                    unpairedFastq=os.path.join(dataDir, "fastq", sampleName + "_unpaired.fastq")
+                )
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_1.fastq"))
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_2.fastq"))
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_unpaired.fastq"))
+
         if args.stage in ["all", "trimadapters"]:
             # TODO:
             # Change absolute path to something usable by everyone or to an option.
-            jobCode += trimAdapters(
-                inputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq"),
-                outputFastq=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
-                cpus=args.cpus,
-                adapters=adapterFasta
-            )
-            tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"))
+            if not PE:
+                jobCode += trimAdaptersSE(
+                    inputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq"),
+                    outputFastq=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
+                    cpus=args.cpus,
+                    adapters=adapterFasta,
+                    log=os.path.join(resultsDir, sampleName + ".trimlog")
+                )
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"))
+            else:
+                jobCode += trimAdaptersPE(
+                    inputFastq1=os.path.join(dataDir, "fastq", sampleName + "_1.fastq"),
+                    inputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.fastq"),
+                    outputFastq1=os.path.join(dataDir, "fastq", sampleName + "_1.trimmed.fastq"),
+                    outputFastq1unpaired=os.path.join(dataDir, "fastq", sampleName + "_1_unpaired.trimmed.fastq"),
+                    outputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.trimmed.fastq"),
+                    outputFastq2unpaired=os.path.join(dataDir, "fastq", sampleName + "_2_unpaired.trimmed.fastq"),
+                    cpus=args.cpus,
+                    adapters=adapterFasta,
+                    log=os.path.join(resultsDir, sampleName + ".trimlog")
+                )
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_1.trimmed.fastq"))
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_2.trimmed.fastq"))
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_1_unpaired.trimmed.fastq"))
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_2_unpaired.trimmed.fastq"))
+
         if args.stage in ["all", "mapping"]:
             if samples["genome"][sample] not in genomeIndexes:
                 logger.error("Sample %s has unsuported genome index: %s" % (sampleName, samples["genome"][sample]))
                 sys.exit(1)
-            jobCode += bowtie2Map(
-                inputFastq=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
-                outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
-                genomeIndex=genomeIndexes[samples["genome"][sample]],
-                cpus=args.cpus
-            )
+            if not PE:
+                jobCode += bowtie2Map(
+                    inputFastq=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
+                    outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
+                    genomeIndex=genomeIndexes[samples["genome"][sample]],
+                    cpus=args.cpus
+                )
+            else:
+                jobCode += bowtie2Map(
+                    inputFastq=os.path.join(dataDir, "fastq", sampleName + "_1.trimmed.fastq"),
+                    outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
+                    genomeIndex=genomeIndexes[samples["genome"][sample]],
+                    cpus=args.cpus,
+                    inputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.trimmed.fastq")
+                )
             tempFiles.append(os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"))
         if args.stage in ["all", "shiftreads"]:
             if tagmented:
@@ -984,6 +1027,22 @@ def makeDiffBindSheet(samples, df, peaksDir, sheetFile):
     return df.empty
 
 
+def checkSamplePE(sampleFile, n=1000):
+    p = subprocess.Popen(['samtools', 'view', sampleFile], stdout=subprocess.PIPE)
+
+    # Count paired alignments
+    paired = 0
+    while n > 0:
+        if 1 & int(p.stdout.next().split("\t")[1]):  # check decimal flag contains 1 (paired)
+            paired += 1
+        n -= 1
+    # If at least half is paired, return True
+    if paired < (n / 2):
+        return False
+    else:
+        return True
+
+
 def slurmHeader(jobName, output, queue="shortq", ntasks=1, time="10:00:00",
                 cpusPerTask=16, memPerCpu=2000, nodes=1, userMail=""):
     command = """    #!/bin/bash
@@ -1051,34 +1110,17 @@ def mergeBams(inputBams, outputBam):
     command = """
     # Merging bam files from replicates
     echo "Merging bam files from replicates"
-    module load samtools
 
-    samtools merge \\
-    {0} \\
+    java -Xmx4g -jar /cm/shared/apps/picard-tools/1.118/MergeSamFiles.jar \\
+    USE_THREADING=TRUE \\
     {1}
-
-    """.format(outputBam, (" ".join(["%s"] * len(inputBams))) % tuple(inputBams))
-
-    return command
-
-
-def bam2fastq(inputBam, outputFastq):
-    command = """
-    # Converting original Bam file to Fastq
-    echo "Converting original Bam file to Fastq"
-    module load bamtools
-
-    bamtools convert \\
-    -in {0} \\
-    -format fastq \\
-    -out {1}
-
-    """.format(inputBam, outputFastq)
+    OUTPUT={0}
+    """.format(outputBam, (" ".join(["INPUT=%s"] * len(inputBams))) % tuple(inputBams))
 
     return command
 
 
-def fastqc(inputFastq, outputDir):
+def fastqc(inputBam, outputDir):
     command = """
     # Measuring sample quality with Fastqc
     echo "Measuring sample quality with Fastqc"
@@ -1089,32 +1131,85 @@ def fastqc(inputFastq, outputDir):
     --outdir {0} \\
     {1}
 
-    """.format(outputDir, inputFastq)
+    """.format(outputDir, inputBam)
 
     return command
 
 
-def trimAdapters(inputFastq, outputFastq, cpus, adapters):
+def bam2fastq(inputBam, outputFastq, outputFastq2=None, unpairedFastq=None):
+    command = """
+    # Merging bam files from replicates
+    echo "Merging bam files from replicates"
+
+    java -Xmx4g -jar /cm/shared/apps/picard-tools/1.118/SamToFastq.jar \\
+    INPUT={0} """.format(inputBam)
+    if outputFastq2 is None and unpairedFastq is None:
+        command += "FASTQ={0}".format(outputFastq)
+    else:
+        command += """FASTQ={0} \\
+        SECOND_END_FASTQ={1} \\
+        UNPAIRED_FASTQ={2}
+        """.format(outputFastq, outputFastq2, unpairedFastq)
+
+    return command
+
+
+def trimAdaptersSE(inputFastq, outputFastq, cpus, adapters, log):
     command = """
     # Trimming adapters from sample
     echo "Trimming adapters from sample"
     module load trimmomatic/0.32
 
-    java -jar `which trimmomatic-0.32.jar` SE -threads {0} \\
-    {1} \\
+    java -Xmx4g -jar `which trimmomatic-0.32.jar` SE \\
+    -threads {0} \\
+    -trimlog {1} \\
     {2} \\
-    ILLUMINACLIP:{3}:1:40:15 \\
+    {3} \\
+    ILLUMINACLIP:{4}:1:40:15 \\
     LEADING:3 TRAILING:3 \\
     SLIDINGWINDOW:4:10 \\
     MINLEN:36
 
-    """.format(cpus, inputFastq, outputFastq, adapters)
+    """.format(cpus, log, inputFastq, outputFastq, adapters)
 
     return command
 
 
-def bowtie2Map(inputFastq, outputBam, genomeIndex, cpus):
+def trimAdaptersPE(inputFastq1, inputFastq2,
+                   outputFastq1, outputFastq1unpaired,
+                   outputFastq2, outputFastq2unpaired,
+                   cpus, adapters, log):
+    command = """
+    # Trimming adapters from sample
+    echo "Trimming adapters from sample"
+    module load trimmomatic/0.32
+
+    java -Xmx4g -jar `which trimmomatic-0.32.jar` PE \\
+    -threads {0} \\
+    -trimlog {1} \\
+    {2} \\
+    {3} \\
+    {4} \\
+    {5} \\
+    {6} \\
+    {7} \\
+    ILLUMINACLIP:{8}:1:40:15 \\
+    LEADING:3 TRAILING:3 \\
+    SLIDINGWINDOW:4:10 \\
+    MINLEN:36
+
+    """.format(cpus, log,
+               inputFastq1, inputFastq2,
+               outputFastq1, outputFastq1unpaired,
+               outputFastq2, outputFastq2unpaired,
+               adapters)
+
+    return command
+
+
+def bowtie2Map(inputFastq, outputBam, genomeIndex, cpus, inputFastq2=None):
     outputBam = re.sub("\.bam$", "", outputBam)
+    # Will only admit 500bp-long fragments. Change with --maxins option
     command = """
     # Mapping reads with Bowtie2
     echo "Mapping reads with Bowtie2"
@@ -1122,12 +1217,16 @@ def bowtie2Map(inputFastq, outputBam, genomeIndex, cpus):
     module load samtools
 
     bowtie2 --very-sensitive -p {0} \\
-    -x {1} \\
-    {2} | \\
+    -x {1} """.format(cpus, genomeIndex)
+    if inputFastq2 is None:
+        command += "{0}".format(inputFastq)
+    else:
+        command += " -1 {0} -2 {1}".format(inputFastq, inputFastq2)
+    command += """ | \\
     samtools view -S -b - | \\
     samtools sort - {3}
 
-    """.format(cpus, genomeIndex, inputFastq, outputBam)
+    """.format(outputBam)
 
     return command
 
@@ -1275,7 +1374,7 @@ def addTrackToHub(sampleName, trackURL, trackHub, colour, fivePrime=""):
     # Adding track to TrackHub
     echo "Adding track to TrackHub"
     echo 'track type=bigWig name="{0} {1}" description="{0} {1}" """.format(sampleName, fivePrime)
-    command += """height=32 visibility=full maxHeightPixels=32:32:25 bigDataUrl={0} color={1}' >> {2} 
+    command += """height=32 visibility=full maxHeightPixels=32:32:25 bigDataUrl={0} color={1}' >> {2}
 
     chmod 755 {2}
 

@@ -2,6 +2,9 @@ ChIP-seq pipelines
 =========
 ChIP-seq pipelines in Python
 ---------
+
+[![Code Health](https://landscape.io/github/afrendeiro/chipseq-pipelines/master/landscape.svg?style=flat)](https://landscape.io/github/afrendeiro/chipseq-pipelines/master)
+
 Tasks include raw sequencing quality control, adapter removal, read trimming, mapping, peak calling, peak annotation, target gene annotation, GO analysis and more. 
 
 

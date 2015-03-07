@@ -2,15 +2,6 @@
 
 """
 ChIP-seq pipeline
-
-    ## BUGS
-    Take care of additional requirements: UCSCutils, ...
-
-    ## FURTHER TO IMPLEMENT
-    copy original sample annotation file to projectDir
-    merge biological replicates, process again
-    Rscript macs2_model.r
-
 """
 
 from argparse import ArgumentParser
@@ -85,6 +76,12 @@ def main():
                                                "shiftreads", "markduplicates", "removeduplicates",
                                                "indexbam", "qc", "maketracks"],
                                       help='Run only these stages. Default=all.', type=str)
+
+    # preprocess
+    preprocess_subparser = subparser.add_parser("stats")
+    preprocess_subparser.add_argument(dest='project_name', help="Project name.", type=str)
+    preprocess_subparser.add_argument(dest='csv', help='CSV file with sample annotation.', type=str)
+
     # analyse
     comparison_subparser = subparser.add_parser("analyse")
     comparison_subparser.add_argument(dest='project_name', help="Project name.", type=str)
@@ -245,6 +242,11 @@ def checkTechnicalReplicates(samples):
 
 
 def preprocess(args, logger):
+    """
+    This takes unmapped Bam files and makes trimmed, aligned, indexed (and shifted if necessary)
+    Bam files along with a UCSC browser track.
+    """
+
     logger.info("Starting sample preprocessing.")
 
     logger.debug("Checking project directories exist and creating if not.")
@@ -460,6 +462,7 @@ def preprocess(args, logger):
                 jobCode += bowtie2Map(
                     inputFastq=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
                     outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
+                    log=os.path.join(resultsDir, sampleName + ".alnRates.txt"),
                     genomeIndex=genomeIndexes[samples["genome"][sample]],
                     cpus=args.cpus
                 )
@@ -467,6 +470,7 @@ def preprocess(args, logger):
                 jobCode += bowtie2Map(
                     inputFastq=os.path.join(dataDir, "fastq", sampleName + "_1.trimmed.fastq"),
                     outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
+                    log=os.path.join(resultsDir, sampleName + ".alnRates.txt"),
                     genomeIndex=genomeIndexes[samples["genome"][sample]],
                     cpus=args.cpus,
                     inputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.trimmed.fastq")
@@ -567,7 +571,10 @@ def preprocess(args, logger):
                 sys.exit(1)
             logger.debug("Project '%s'submission finished successfully." % args.project_name)
 
-    # write annotation sheet with biological replicates
+    # write original annotation sheet to project folder
+    samples.to_csv(os.path.join(projectDir, args.project_name + ".annotation_sheet.csv"), index=False)
+
+    # write annotation sheet with biological replicates to project folder
     df = pd.DataFrame(samplesMerged)
     df["controlSampleName"] = None
     df.to_csv(os.path.join(projectDir, args.project_name + ".biol_replicates.annotation_sheet.csv"), index=False)
@@ -580,6 +587,10 @@ def preprocess(args, logger):
 
 
 def readStats(args, logger):
+    """
+    Given an annotation sheet with biologicalReplicates, gets number of reads mapped, duplicates, etc...
+    """
+
     logger.info("Starting sample read stats.")
 
     logger.debug("Checking project directories exist and creating if not.")
@@ -613,12 +624,20 @@ def readStats(args, logger):
             sampleName = string.join([str(samples[var][sample]) for var in variables], sep="_")
             logger.debug("No sample name provided, using concatenation of variables supplied")
 
+        # TODO:
+        # Get read numbers and alignment rates from 
+        # os.path.join(resultsDir, sampleName + ".alnRates.txt"),
+
         # Get duplicates
-        dups = pd.read_csv(os.path.join(resultsDir, sampleName, ".duplicates.txt"), sep="\t", comment="#", header=1)
+        try:
+            dups = pd.read_csv(os.path.join(resultsDir, sampleName + ".duplicates.txt"), sep="\t", comment="#", header=1)
+        except IOError("Record with duplicates not found for sample %s" % sampleName):
+            continue
         dups.dropna(thresh=len(dups.columns) - 1, inplace=True)
 
         # Add values to sample sheet
-        samples[[cols]] = dups.drop(["LIBRARY"], axis=1)
+        for col in range(len(cols)):
+            samples[cols[col]][sample] = dups.drop(["LIBRARY"], axis=1).ix[0][col]
 
     # write annotation sheet with biological replicates
     samples.to_csv(os.path.join(projectDir, args.project_name + ".read_stats.csv"), index=False)
@@ -1207,7 +1226,7 @@ def trimAdaptersPE(inputFastq1, inputFastq2,
     return command
 
 
-def bowtie2Map(inputFastq, outputBam, genomeIndex, cpus, inputFastq2=None):
+def bowtie2Map(inputFastq, outputBam, log, genomeIndex, cpus, inputFastq2=None):
     outputBam = re.sub("\.bam$", "", outputBam)
     # Will only admit 500bp-long fragments. Change with --maxins option
     command = """
@@ -1224,9 +1243,9 @@ def bowtie2Map(inputFastq, outputBam, genomeIndex, cpus, inputFastq2=None):
         command += " -1 {0} -2 {1}".format(inputFastq, inputFastq2)
     command += """ | \\
     samtools view -S -b - | \\
-    samtools sort - {3}
+    samtools sort - {0} 2> {1}
 
-    """.format(outputBam)
+    """.format(outputBam, log)
 
     return command
 

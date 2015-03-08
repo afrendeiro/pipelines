@@ -87,25 +87,19 @@ def main():
     preprocess_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
 
     # analyse
-    comparison_subparser = subparser.add_parser("analyse")
-    comparison_subparser.add_argument(dest="project_name", help="Project name.", type=str)
-    comparison_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
-    comparison_subparser.add_argument("-s", "--stage", default="all", dest="stage",
-                                      choices=["all", "callpeaks", "findmotifs", "centerpeaks",
-                                               "annotatepeaks", "peakanalysis", "tssanalysis", "footprints"],
-                                      help="Run only these stages. Default=all.", type=str)
-    comparison_subparser.add_argument("--peak-caller", default="macs2", choices=["macs2", "spp"],
-                                      dest="peak_caller", help="Peak caller to use. Default=macs2.", type=str)
-    comparison_subparser.add_argument("--peak-window-width", default=2000,
-                                      dest="peak_window_width",
-                                      help="Width of window around peak motifs. Default=2000.",
-                                      type=int)
-    comparison_subparser.add_argument("--duplicates", dest="duplicates", action="store_true",
-                                      help="Allow duplicates in coorelation analysis. Default=False.")
-    comparison_subparser.add_argument("--genome-window-width", default=1000,
-                                      dest="genome_window_width",
-                                      help="Width of window to make genome-wide correlations. Default=1000.",
-                                      type=int)
+    analyse_subparser = subparser.add_parser("analyse")
+    analyse_subparser.add_argument(dest="project_name", help="Project name.", type=str)
+    analyse_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
+    analyse_subparser.add_argument("-s", "--stage", default="all", dest="stage",
+                                   choices=["all", "callpeaks", "findmotifs", "centerpeaks",
+                                            "annotatepeaks", "peakanalysis", "tssanalysis", "footprints"],
+                                   help="Run only these stages. Default=all.", type=str)
+    analyse_subparser.add_argument("--peak-caller", default="macs2", choices=["macs2", "spp"],
+                                   dest="peak_caller", help="Peak caller to use. Default=macs2.", type=str)
+    analyse_subparser.add_argument("--peak-window-width", default=2000,
+                                   dest="peak_window_width",
+                                   help="Width of window around peak motifs. Default=2000.",
+                                   type=int)
 
     # compare
     comparison_subparser = subparser.add_parser("compare")
@@ -114,6 +108,12 @@ def main():
     comparison_subparser.add_argument("-s", "--stage", default="all", dest="stage",
                                       choices=["all", "diffbind", "correlations"],
                                       help="Run only these stages. Default=all.", type=str)
+    comparison_subparser.add_argument("--duplicates", dest="duplicates", action="store_true",
+                                      help="Allow duplicates in coorelation analysis. Default=False.")
+    comparison_subparser.add_argument("--genome-window-width", default=1000,
+                                      dest="genome_window_width",
+                                      help="Width of window to make genome-wide correlations. Default=1000.",
+                                      type=int)
 
     # Parse
     args = parser.parse_args()
@@ -250,7 +250,6 @@ def getReplicates(samples):
     # get merged technical replicates -> biological replicates
     variables.pop(variables.index("technicalReplicate"))
 
-    groups = samples.groupby(variables).groups
     for key, values in samples.groupby(variables).groups.items():
         rep = samples.ix[values][varsName].reset_index(drop=True).ix[0]
         rep["experimentName"] = np.nan
@@ -264,7 +263,6 @@ def getReplicates(samples):
     # get merged biological replicates -> merged biological replicates
     variables.pop(variables.index("biologicalReplicate"))
 
-    groups = samples.groupby(variables).groups
     for key, values in samples.groupby(variables).groups.items():
         rep = samples.ix[values][varsName].reset_index(drop=True).ix[0]
         rep["experimentName"] = np.nan
@@ -369,7 +367,7 @@ def preprocess(args, logger):
         jobName = projectName + "_" + sampleName
 
         # check if sample is paired end
-        PE = checkSamplePE(samplesMerged["filePath"][sample][0])
+        PE = isPairedEnd(samplesMerged["filePath"][sample][0])
 
         # check if sample is tagmented or not:
         tagmented = True if samplesMerged["technique"][sample] in tagment else False
@@ -443,27 +441,20 @@ def preprocess(args, logger):
         if args.stage in ["all", "trimadapters"]:
             # TODO:
             # Change absolute path to something usable by everyone or to an option.
+            jobCode += trimAdapters(
+                inputFastq1=os.path.join(dataDir, "fastq", sampleName + "_1.fastq"),
+                inputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.fastq") if PE else None,
+                outputFastq1=os.path.join(dataDir, "fastq", sampleName + "_1.trimmed.fastq"),
+                outputFastq1unpaired=os.path.join(dataDir, "fastq", sampleName + "_1_unpaired.trimmed.fastq") if PE else None,
+                outputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.trimmed.fastq") if PE else None,
+                outputFastq2unpaired=os.path.join(dataDir, "fastq", sampleName + "_2_unpaired.trimmed.fastq") if PE else None,
+                cpus=args.cpus,
+                adapters=adapterFasta,
+                log=os.path.join(resultsDir, sampleName + ".trimlog")
+            )
             if not PE:
-                jobCode += trimAdaptersSE(
-                    inputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq"),
-                    outputFastq=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
-                    cpus=args.cpus,
-                    adapters=adapterFasta,
-                    log=os.path.join(resultsDir, sampleName + ".trimlog")
-                )
                 tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"))
             else:
-                jobCode += trimAdaptersPE(
-                    inputFastq1=os.path.join(dataDir, "fastq", sampleName + "_1.fastq"),
-                    inputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.fastq"),
-                    outputFastq1=os.path.join(dataDir, "fastq", sampleName + "_1.trimmed.fastq"),
-                    outputFastq1unpaired=os.path.join(dataDir, "fastq", sampleName + "_1_unpaired.trimmed.fastq"),
-                    outputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.trimmed.fastq"),
-                    outputFastq2unpaired=os.path.join(dataDir, "fastq", sampleName + "_2_unpaired.trimmed.fastq"),
-                    cpus=args.cpus,
-                    adapters=adapterFasta,
-                    log=os.path.join(resultsDir, sampleName + ".trimlog")
-                )
                 tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_1.trimmed.fastq"))
                 tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_2.trimmed.fastq"))
                 tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_1_unpaired.trimmed.fastq"))
@@ -473,23 +464,15 @@ def preprocess(args, logger):
             if samplesMerged["genome"][sample] not in genomeIndexes:
                 logger.error("Sample %s has unsuported genome index: %s" % (sampleName, samplesMerged["genome"][sample]))
                 sys.exit(1)
-            if not PE:
-                jobCode += bowtie2Map(
-                    inputFastq=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
-                    outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
-                    log=os.path.join(resultsDir, sampleName + ".alnRates.txt"),
-                    genomeIndex=genomeIndexes[samplesMerged["genome"][sample]],
-                    cpus=args.cpus
-                )
-            else:
-                jobCode += bowtie2Map(
-                    inputFastq=os.path.join(dataDir, "fastq", sampleName + "_1.trimmed.fastq"),
-                    outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
-                    log=os.path.join(resultsDir, sampleName + ".alnRates.txt"),
-                    genomeIndex=genomeIndexes[samplesMerged["genome"][sample]],
-                    cpus=args.cpus,
-                    inputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.trimmed.fastq")
-                )
+
+            jobCode += bowtie2Map(
+                inputFastq1=os.path.join(dataDir, "fastq", sampleName + "_1.trimmed.fastq") if PE else os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
+                inputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.trimmed.fastq") if PE else None,
+                outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
+                log=os.path.join(resultsDir, sampleName + ".alnRates.txt"),
+                genomeIndex=genomeIndexes[samplesMerged["genome"][sample]],
+                cpus=args.cpus
+            )
             tempFiles.append(os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"))
         if args.stage in ["all", "shiftreads"]:
             if tagmented:
@@ -592,7 +575,7 @@ def preprocess(args, logger):
     # write original annotation sheet to project folder
     samples.to_csv(os.path.join(projectDir, args.project_name + ".annotation_sheet.csv"), index=False)
     # write annotation sheet with biological replicates to project folder
-    samplesMerged.to_csv(os.path.join(projectDir, args.project_name + ".biol_replicates.annotation_sheet.csv"), index=False)
+    samplesMerged.to_csv(os.path.join(projectDir, args.project_name + ".replicates.annotation_sheet.csv"), index=False)
 
     logger.debug("Finished preprocessing")
 
@@ -623,7 +606,7 @@ def readStats(args, logger):
     samples = pd.read_csv(args.csv)
 
     variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "controlSampleName"]
+    exclude = ["sampleNumber", "sampleName", "experimentName", "filePath", "controlSampleName"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
     cols = ["unpairedReadsExamined", "readPairsExamined", "unmappedReads", "unpairedReadDuplicates",
@@ -713,7 +696,7 @@ def analyse(args, logger):
 
     # Preprocess samples
     variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "controlSampleName"]
+    exclude = ["sampleNumber", "sampleName", "experimentName", "filePath", "controlSampleName"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
     # track jobs to submit
@@ -728,16 +711,21 @@ def analyse(args, logger):
             sampleName = string.join([str(samples[var][sample]) for var in variables], sep="_")
             logger.debug("No sample name provided, using concatenation of variables supplied")
 
-        # Control name
+        # Pair with control
         control = False
         # get file path of sample which this sample's controlName is pointing to
         ctrlField = samples[samples['sampleName'].isin([samples['controlSampleName'][sample]])]['filePath']
+        # ^^ doesn't mean it has something (i.e. is empty if no control sample is indicated)
 
         # if there is only one record, use that as control
         if len(ctrlField) == 1:
             control = True
             controlName = samples.ix[sample]["controlSampleName"]
             controlBam = os.path.abspath(ctrlField.values[0])
+
+        # skip samples without matched control
+        if not control:
+            continue
 
         # check if sample is tagmented or not:
         tagmented = True if samples["technique"][sample] in tagment else False
@@ -813,7 +801,7 @@ def analyse(args, logger):
                     n_motifs=12
                 )
             else:
-                # For histones, use a broad region to find motifs
+                # For histones, use a broader region to find motifs
                 jobCode += homerFindMotifs(
                     peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
                     genome=samples["genome"][sample],
@@ -941,7 +929,7 @@ def compare(args, logger):
     projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
 
     variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "filePath", "genome", "controlSampleName"]
+    exclude = ["sampleNumber", "sampleName", "experimentName", "filePath", "controlSampleName"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
     # track jobs to submit
@@ -954,7 +942,6 @@ def compare(args, logger):
         genome_groups = samples.groupby(["genome"]).groups
 
         for genome in genome_groups.keys():
-
             # Separate comparison per IPed factor
             df = samples.ix[genome_groups[genome]]
             IP_groups = df.groupby(["ip"]).groups
@@ -968,6 +955,7 @@ def compare(args, logger):
 
                 # make diffBind csv file, save it
                 empty = makeDiffBindSheet(samples, samples.ix[IP_groups[IP]], os.path.join(dataDir, "peaks"), diffBindSheetFile)
+                # ^^ returns Bool for empty diffBind sheet
 
                 if not empty:
                     # create job
@@ -1039,33 +1027,7 @@ def compare(args, logger):
             os.path.join(projectDir, "runs", args.project_name + ".log"))
 
 
-def makeDiffBindSheet(samples, df, peaksDir, sheetFile):
-    """
-    Prepares and saves a diffBind annotation sheet from a pandas.DataFrame annotation with standard columns.
-    """
-    for col in ["numberCells", "technique", "treatment", "patient"]:
-        df[col] = df[col].apply(str)
-    df["condition"] = df["numberCells"] + "_" + df["technique"]
-    df["treatment"] = df["treatment"] + "_" + df["patient"]
-    df["ControlID"] = list(samples["sampleName"][list(df["controlSampleName"] - 1)])
-    df["bamControl"] = list(samples["filePath"][list(df["controlSampleName"] - 1)])
-    df["Peaks"] = [os.path.join(peaksDir, sampleName, sampleName + "_peaks.narrowPeak") for sampleName in df["sampleName"]]
-    df["PeakCaller"] = "macs"
-    df = df[["sampleName", "cellLine", "ip", "condition", "treatment",
-             "biologicalReplicate", "filePath", "ControlID", "bamControl", "Peaks", "PeakCaller"]]
-    df.columns = ["SampleID", "Tissue", "Factor", "Condition", "Treatment",
-                  "Replicate", "bamReads", "ControlID", "bamControl", "Peaks", "PeakCaller"]
-    # exclude samples without matched control
-    df = df[df["ControlID"].notnull()]
-    # if not empty
-    if not df.empty:
-        # save as csv
-        df.to_csv(sheetFile, index=False)  # check if format complies with DiffBind
-
-    return df.empty
-
-
-def checkSamplePE(sampleFile, n=1000):
+def isPairedEnd(sampleFile, n=1000):
     p = subprocess.Popen(['samtools', 'view', sampleFile], stdout=subprocess.PIPE)
 
     # Count paired alignments
@@ -1079,6 +1041,43 @@ def checkSamplePE(sampleFile, n=1000):
         return False
     else:
         return True
+
+
+def makeDiffBindSheet(samples, df, peaksDir, sheetFile):
+    """
+    Prepares and saves a diffBind annotation sheet from a pandas.DataFrame annotation with standard columns.
+    """
+    # Exclude samples without matched control
+    df = df[df["controlSampleName"].notnull()]
+
+    # Convert numerical fields to str
+    for col in ["numberCells", "technique", "treatment", "patient"]:
+        df[col] = df[col].apply(str)
+
+    # Merge some annotation fields
+    df.loc[:, "condition"] = df["numberCells"] + "_" + df["technique"]
+    df.loc[:, "treatment"] = df["treatment"] + "_" + df["patient"]
+
+    # Complete rest of annotation
+    df.loc[:, "ControlID"] = df['controlSampleName']
+    df.loc[:, "bamControl"] = [samples[samples['sampleName'] == ctrl]["filePath"].tolist()[0] for ctrl in df['controlSampleName']]
+    df.loc[:, "Peaks"] = [os.path.join(peaksDir, sampleName, sampleName + "_peaks.narrowPeak") for sampleName in df["sampleName"]]
+    df.loc[:, "PeakCaller"] = "macs"
+
+    # Filter columns used
+    df = df[["sampleName", "cellLine", "ip", "condition", "treatment",
+             "biologicalReplicate", "filePath", "ControlID", "bamControl", "Peaks", "PeakCaller"]]
+    # Rename columns
+    df.columns = ["SampleID", "Tissue", "Factor", "Condition", "Treatment",
+                  "Replicate", "bamReads", "ControlID", "bamControl", "Peaks", "PeakCaller"]
+
+    # If resulting table is not empty, write to disk
+    if not df.empty:
+        # save as csv
+        df.to_csv(sheetFile, index=False)  # check if format complies with DiffBind
+
+    # Return bool of empty
+    return df.empty
 
 
 def slurmHeader(jobName, output, queue="shortq", ntasks=1, time="10:00:00",
@@ -1175,8 +1174,8 @@ def fastqc(inputBam, outputDir):
 
 def bam2fastq(inputBam, outputFastq, outputFastq2=None, unpairedFastq=None):
     command = """
-    # Merging bam files from replicates
-    echo "Merging bam files from replicates"
+    # Convert to Fastq format
+    echo "Converting to Fastq format"
 
     java -Xmx4g -jar /cm/shared/apps/picard-tools/1.118/SamToFastq.jar \\
     INPUT={0} """.format(inputBam)
@@ -1191,31 +1190,12 @@ def bam2fastq(inputBam, outputFastq, outputFastq2=None, unpairedFastq=None):
     return command
 
 
-def trimAdaptersSE(inputFastq, outputFastq, cpus, adapters, log):
-    command = """
-    # Trimming adapters from sample
-    echo "Trimming adapters from sample"
-    module load trimmomatic/0.32
+def trimAdapters(inputFastq1, outputFastq1, cpus, adapters, log,
+                 inputFastq2=None, outputFastq1unpaired=None,
+                 outputFastq2=None, outputFastq2unpaired=None):
 
-    java -Xmx4g -jar `which trimmomatic-0.32.jar` SE \\
-    -threads {0} \\
-    -trimlog {1} \\
-    {2} \\
-    {3} \\
-    ILLUMINACLIP:{4}:1:40:15 \\
-    LEADING:3 TRAILING:3 \\
-    SLIDINGWINDOW:4:10 \\
-    MINLEN:36
+    PE = False if inputFastq2 is None else True
 
-    """.format(cpus, log, inputFastq, outputFastq, adapters)
-
-    return command
-
-
-def trimAdaptersPE(inputFastq1, inputFastq2,
-                   outputFastq1, outputFastq1unpaired,
-                   outputFastq2, outputFastq2unpaired,
-                   cpus, adapters, log):
     command = """
     # Trimming adapters from sample
     echo "Trimming adapters from sample"
@@ -1225,28 +1205,34 @@ def trimAdaptersPE(inputFastq1, inputFastq2,
     -threads {0} \\
     -trimlog {1} \\
     {2} \\
-    {3} \\
-    {4} \\
-    {5} \\
-    {6} \\
-    {7} \\
-    ILLUMINACLIP:{8}:1:40:15 \\
+    """.format(cpus, log, inputFastq1)
+    if PE:
+        command += """\\
+    {0} \\
+    """.format(inputFastq2)
+    command += """\\
+    {0} \\
+    """.format(outputFastq1)
+    if PE:
+        command += """\\
+    {0} \\
+    {1} \\
+    {2} \\
+    ILLUMINACLIP:{3}:1:40:15 \\
     LEADING:3 TRAILING:3 \\
     SLIDINGWINDOW:4:10 \\
     MINLEN:36
 
-    """.format(cpus, log,
-               inputFastq1, inputFastq2,
-               outputFastq1, outputFastq1unpaired,
+    """.format(outputFastq1unpaired,
                outputFastq2, outputFastq2unpaired,
                adapters)
 
     return command
 
 
-def bowtie2Map(inputFastq, outputBam, log, genomeIndex, cpus, inputFastq2=None):
+def bowtie2Map(inputFastq1, outputBam, log, genomeIndex, cpus, inputFastq2=None):
     outputBam = re.sub("\.bam$", "", outputBam)
-    # Will only admit 500bp-long fragments. Change with --maxins option
+    # Will only admit <500bp-long fragments. Change with --maxins option
     command = """
     # Mapping reads with Bowtie2
     echo "Mapping reads with Bowtie2"
@@ -1254,14 +1240,17 @@ def bowtie2Map(inputFastq, outputBam, log, genomeIndex, cpus, inputFastq2=None):
     module load samtools
 
     bowtie2 --very-sensitive -p {0} \\
-    -x {1} """.format(cpus, genomeIndex)
+    -x {1} \\
+    """.format(cpus, genomeIndex)
     if inputFastq2 is None:
-        command += "{0}".format(inputFastq)
+        command += "{0} ".format(inputFastq1)
     else:
-        command += " -1 {0} -2 {1}".format(inputFastq, inputFastq2)
+        command += """-1 {0} \\
+    -2 {1}""".format(inputFastq1, inputFastq2)
     command += """ | \\
     samtools view -S -b - | \\
-    samtools sort - {0} 2> {1}
+    samtools sort - {0} 2> \\
+    {1}
 
     """.format(outputBam, log)
 
@@ -1617,7 +1606,8 @@ def plotCorrelations(inputBams, plotsDir, duplicates=False,
 
     source ~/venv/bin/activate
 
-    python {5}/lib/correlations.py {0} \\
+    python {5}/lib/correlations.py \\
+    {0} \\
     {1} \\
     --window-width {2} \\
     --fragment-size {3} \\

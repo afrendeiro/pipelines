@@ -28,6 +28,11 @@ Activate the environment:
 
 	source <name>/bin/activate
 
+Clone the repository
+
+    git clone git@github.com:afrendeiro/chipseq-pipelines.git
+    cd chipseq-pipelines
+
 Install Python requirements:
 
 	pip install -r requirements.txt
@@ -35,7 +40,7 @@ Install Python requirements:
 Good to go!
 
 # Dependencies
-It uses the following software, which is available in the cluster:
+It uses the following software, which is available in the CeMM cluster:
 - Fastqc
 - Piccard tools
 - Bowtie2

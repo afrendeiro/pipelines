@@ -71,6 +71,7 @@ def main():
 
     # Sub commands
     subparser = parser.add_subparsers(title="sub-command", dest="command")
+
     # preprocess
     preprocess_subparser = subparser.add_parser("preprocess")
     preprocess_subparser.add_argument(dest="project_name", help="Project name.", type=str)
@@ -82,9 +83,9 @@ def main():
                                       help="Run only these stages. Default=all.", type=str)
 
     # preprocess
-    preprocess_subparser = subparser.add_parser("stats")
-    preprocess_subparser.add_argument(dest="project_name", help="Project name.", type=str)
-    preprocess_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
+    stats_subparser = subparser.add_parser("stats")
+    stats_subparser.add_argument(dest="project_name", help="Project name.", type=str)
+    stats_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
 
     # analyse
     analyse_subparser = subparser.add_parser("analyse")
@@ -102,18 +103,18 @@ def main():
                                    type=int)
 
     # compare
-    comparison_subparser = subparser.add_parser("compare")
-    comparison_subparser.add_argument(dest="project_name", help="Project name.", type=str)
-    comparison_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
-    comparison_subparser.add_argument("-s", "--stage", default="all", dest="stage",
-                                      choices=["all", "diffbind", "correlations"],
-                                      help="Run only these stages. Default=all.", type=str)
-    comparison_subparser.add_argument("--duplicates", dest="duplicates", action="store_true",
-                                      help="Allow duplicates in coorelation analysis. Default=False.")
-    comparison_subparser.add_argument("--genome-window-width", default=1000,
-                                      dest="genome_window_width",
-                                      help="Width of window to make genome-wide correlations. Default=1000.",
-                                      type=int)
+    compare_subparser = subparser.add_parser("compare")
+    compare_subparser.add_argument(dest="project_name", help="Project name.", type=str)
+    compare_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
+    compare_subparser.add_argument("-s", "--stage", default="all", dest="stage",
+                                   choices=["all", "diffbind", "correlations"],
+                                   help="Run only these stages. Default=all.", type=str)
+    compare_subparser.add_argument("--duplicates", dest="duplicates", action="store_true",
+                                   help="Allow duplicates in coorelation analysis. Default=False.")
+    compare_subparser.add_argument("--genome-window-width", default=1000,
+                                   dest="genome_window_width",
+                                   help="Width of window to make genome-wide correlations. Default=1000.",
+                                   type=int)
 
     # Parse
     args = parser.parse_args()

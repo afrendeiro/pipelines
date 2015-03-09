@@ -444,24 +444,24 @@ def preprocess(args, logger):
             else:
                 jobCode += bam2fastq(
                     inputBam=unmappedBam,
-                    outputFastq=os.path.join(dataDir, "fastq", sampleName + "_1.fastq"),
-                    outputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.fastq"),
-                    unpairedFastq=os.path.join(dataDir, "fastq", sampleName + "_unpaired.fastq")
+                    outputFastq=os.path.join(dataDir, "fastq", sampleName + ".1.fastq"),
+                    outputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.fastq"),
+                    unpairedFastq=os.path.join(dataDir, "fastq", sampleName + ".unpaired.fastq")
                 )
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_1.fastq"))
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_2.fastq"))
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_unpaired.fastq"))
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".1.fastq"))
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".2.fastq"))
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".unpaired.fastq"))
 
         if args.stage in ["all", "trimadapters"]:
             # TODO:
             # Change absolute path to something usable by everyone or to an option.
             jobCode += trimAdapters(
-                inputFastq1=os.path.join(dataDir, "fastq", sampleName + "_1.fastq"),
-                inputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.fastq") if PE else None,
-                outputFastq1=os.path.join(dataDir, "fastq", sampleName + "_1.trimmed.fastq"),
-                outputFastq1unpaired=os.path.join(dataDir, "fastq", sampleName + "_1_unpaired.trimmed.fastq") if PE else None,
-                outputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.trimmed.fastq") if PE else None,
-                outputFastq2unpaired=os.path.join(dataDir, "fastq", sampleName + "_2_unpaired.trimmed.fastq") if PE else None,
+                inputFastq1=os.path.join(dataDir, "fastq", sampleName + ".1.fastq"),
+                inputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.fastq") if PE else None,
+                outputFastq1=os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq"),
+                outputFastq1unpaired=os.path.join(dataDir, "fastq", sampleName + ".1_unpaired.trimmed.fastq") if PE else None,
+                outputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.trimm.d.fastq") if PE else None,
+                outputFastq2unpaired=os.path.join(dataDir, "fastq", sampleName + ".2_unpaired.trimmed.fastq") if PE else None,
                 cpus=args.cpus,
                 adapters=adapterFasta,
                 log=os.path.join(resultsDir, sampleName + ".trimlog")
@@ -469,10 +469,10 @@ def preprocess(args, logger):
             if not PE:
                 tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"))
             else:
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_1.trimmed.fastq"))
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_2.trimmed.fastq"))
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_1_unpaired.trimmed.fastq"))
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + "_2_unpaired.trimmed.fastq"))
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq"))
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq"))
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".1_unpaired.trimmed.fastq"))
+                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".2_unpaired.trimmed.fastq"))
 
         if args.stage in ["all", "mapping"]:
             if samplesMerged["genome"][sample] not in genomeIndexes:
@@ -480,8 +480,8 @@ def preprocess(args, logger):
                 sys.exit(1)
 
             jobCode += bowtie2Map(
-                inputFastq1=os.path.join(dataDir, "fastq", sampleName + "_1.trimmed.fastq") if PE else os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
-                inputFastq2=os.path.join(dataDir, "fastq", sampleName + "_2.trimmed.fastq") if PE else None,
+                inputFastq1=os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq") if PE else os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
+                inputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq") if PE else None,
                 outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
                 log=os.path.join(resultsDir, sampleName + ".alnRates.txt"),
                 genomeIndex=genomeIndexes[samplesMerged["genome"][sample]],
@@ -1047,15 +1047,16 @@ def isPairedEnd(sampleFile, n=10):
     # Count paired alignments
     paired = 0
     while n > 0:
-        if 1 & int(p.stdout.next().split("\t")[1]):  # check decimal flag contains 1 (paired)
+        flag = int(p.stdout.next().split("\t")[1])
+        if 1 & flag:  # check decimal flag contains 1 (paired)
             paired += 1
         n -= 1
     p.kill()
     # If at least half is paired, return True
-    if paired < (n / 2):
-        return False
-    else:
+    if paired > (n / 2):
         return True
+    else:
+        return False
 
 
 def makeDiffBindSheet(samples, df, peaksDir, sheetFile):
@@ -1164,7 +1165,7 @@ def mergeBams(inputBams, outputBam):
 
     java -Xmx4g -jar /cm/shared/apps/picard-tools/1.118/MergeSamFiles.jar \\
     USE_THREADING=TRUE \\
-    {1}
+    {1} \\
     OUTPUT={0}
     """.format(outputBam, (" ".join(["INPUT=%s"] * len(inputBams))) % tuple(inputBams))
 
@@ -1193,13 +1194,16 @@ def bam2fastq(inputBam, outputFastq, outputFastq2=None, unpairedFastq=None):
     echo "Converting to Fastq format"
 
     java -Xmx4g -jar /cm/shared/apps/picard-tools/1.118/SamToFastq.jar \\
-    INPUT={0} """.format(inputBam)
+    INPUT={0} \\
+    """.format(inputBam)
     if outputFastq2 is None and unpairedFastq is None:
-        command += "FASTQ={0}".format(outputFastq)
+        command += """FASTQ={0}
+    """.format(outputFastq)
     else:
         command += """FASTQ={0} \\
     SECOND_END_FASTQ={1} \\
     UNPAIRED_FASTQ={2}
+
     """.format(outputFastq, outputFastq2, unpairedFastq)
 
     return command
@@ -1210,17 +1214,20 @@ def trimAdapters(inputFastq1, outputFastq1, cpus, adapters, log,
                  outputFastq2=None, outputFastq2unpaired=None):
 
     PE = False if inputFastq2 is None else True
+    pe = "PE" if PE else "SE"
 
     command = """
     # Trimming adapters from sample
     echo "Trimming adapters from sample"
     module load trimmomatic/0.32
 
-    java -Xmx4g -jar `which trimmomatic-0.32.jar` PE \\
-    -threads {0} \\
-    -trimlog {1} \\
-    {2} \\
-    """.format(cpus, log, inputFastq1)
+    java -Xmx4g -jar `which trimmomatic-0.32.jar` """
+
+    command += """{0} \\
+    -threads {1} \\
+    -trimlog {2} \\
+    {3} \\
+    """.format(pe, cpus, log, inputFastq1)
     if PE:
         command += """\\
     {0} \\
@@ -1309,7 +1316,8 @@ def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
     TMP_DIR={3}
 
     # Sort bam file with marked duplicates
-    samtools sort {1} {4}
+    samtools sort {1} \\
+    {4}
 
     if [[ -s {1} ]]
         then
@@ -1325,7 +1333,9 @@ def removeDuplicates(inputBam, outputBam, cpus=16):
     command = """
     # Removing duplicates with sambamba
     echo "Remove duplicates with sambamba"
-    sambamba markdup -t {2} -r {0} {1}
+    sambamba markdup -t {2} -r \\
+    {0} \\
+    {1}
 
     """.format(inputBam, outputBam, cpus)
 
@@ -1370,9 +1380,12 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, genome, tagmented=False):
     bedtools bamtobed -i {0} | \\
     bedtools slop -i stdin -g {1} -s -l 0 -r 130 | \\
     python {5}/lib/fix_bedfile_genome_boundaries.py {4} | \\
-    genomeCoverageBed -i stdin -bg -g {1} > {2}.cov
+    genomeCoverageBed -i stdin -bg -g {1} \\
+    > {2}.cov
 
-    bedGraphToBigWig {2}.cov {1} {3}
+    bedGraphToBigWig {2}.cov \\
+    {1} \\
+    {3}
 
     # remove cov file
     if [[ -s {2}.cov ]]
@@ -1392,9 +1405,12 @@ def bamToUCSC(inputBam, outputBigWig, genomeSizes, genome, tagmented=False):
 
     bedtools bamtobed -i {0} | \\
     python {4}/lib/get5primePosition.py | \\
-    genomeCoverageBed -i stdin -bg -g {1} > {2}.cov
+    genomeCoverageBed -i stdin -bg -g {1} \\
+    > {2}.cov
 
-    bedGraphToBigWig {2}.cov {1} {3}
+    bedGraphToBigWig {2}.cov \\
+    {1} \\
+    {3}
 
     # remove cov file
     if [[ -s {2}.cov ]]

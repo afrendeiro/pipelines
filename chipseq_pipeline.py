@@ -252,27 +252,29 @@ def getReplicates(samples):
 
     for key, values in samples.groupby(variables).groups.items():
         rep = samples.ix[values][varsName].reset_index(drop=True).ix[0]
-        rep["experimentName"] = np.nan
-        rep["technicalReplicate"] = 0
-        rep["filePath"] = samples.ix[values]["filePath"].tolist()
-        rep["sampleName"] = "_".join([str(i) for i in rep[varsName]])
-
-        # append biological replicate to sample annotation
-        samplesMerged = samplesMerged.append(rep, ignore_index=True)
+        if len(values) > 1:
+            rep["experimentName"] = np.nan
+            rep["technicalReplicate"] = 0
+            rep["filePath"] = samples.ix[values]["filePath"].tolist()
+            rep["sampleName"] = "_".join([str(i) for i in rep[varsName]])
+            # append biological replicate to sample annotation
+            samplesMerged = samplesMerged.append(rep, ignore_index=True)
 
     # get merged biological replicates -> merged biological replicates
     variables.pop(variables.index("biologicalReplicate"))
 
     for key, values in samples.groupby(variables).groups.items():
         rep = samples.ix[values][varsName].reset_index(drop=True).ix[0]
-        rep["experimentName"] = np.nan
-        rep["technicalReplicate"] = 0
-        rep["biologicalReplicate"] = 0
-        rep["filePath"] = samples.ix[values]["filePath"].tolist()
-        rep["sampleName"] = "_".join([str(i) for i in rep[varsName]])
-
-        # append biological replicate to sample annotation
-        samplesMerged = samplesMerged.append(rep, ignore_index=True)
+        if len(values) > 1:
+            # check samples in group are from different biological replicates
+            if len(samples.ix[samples.groupby(variables).groups[key]]['biologicalReplicate'].unique()) > 1:
+                rep["experimentName"] = np.nan
+                rep["biologicalReplicate"] = 0
+                rep["technicalReplicate"] = 0
+                rep["filePath"] = samples.ix[values]["filePath"].tolist()
+                rep["sampleName"] = "_".join([str(i) for i in rep[varsName]])
+                # append biological replicate to sample annotation
+                samplesMerged = samplesMerged.append(rep, ignore_index=True)
 
     # add field for manual sample pairing
     samplesMerged["controlSampleName"] = None
@@ -351,12 +353,24 @@ def preprocess(args, logger):
     # Perform checks on the variables given
     # (e.g. genome in genomeIndexes)
 
+    # Check files exist and are not empty
+    for sampleFile in samples['filePath']:
+        try:
+            if os.stat(sampleFile).st_size == 0:
+                logger.error("Provided file %s is empty." % sampleFile)
+                sys.exit(1)
+        except OSError:
+            logger.error("Provided file %s does not exist." % sampleFile)
+            raise IOError("Provided file %s does not exist." % sampleFile)
+            sys.exit(1)
+
     # start pipeline
     projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
 
     # Get biological replicates and merged biological replicates
     logger.debug("Checking which samples should be merged.")
-    samplesMerged = getReplicates(samples)  # <- this is the new annotation sheet as well
+    samplesMerged = getReplicates(samples.copy())
+    # ^^ this is the new annotation sheet as well
 
     # Preprocess samples
     for sample in range(len(samplesMerged)):
@@ -1027,7 +1041,7 @@ def compare(args, logger):
             os.path.join(projectDir, "runs", args.project_name + ".log"))
 
 
-def isPairedEnd(sampleFile, n=1000):
+def isPairedEnd(sampleFile, n=10):
     p = subprocess.Popen(['samtools', 'view', sampleFile], stdout=subprocess.PIPE)
 
     # Count paired alignments
@@ -1036,6 +1050,7 @@ def isPairedEnd(sampleFile, n=1000):
         if 1 & int(p.stdout.next().split("\t")[1]):  # check decimal flag contains 1 (paired)
             paired += 1
         n -= 1
+    p.kill()
     # If at least half is paired, return True
     if paired < (n / 2):
         return False

@@ -76,7 +76,7 @@ def main():
     preprocess_subparser.add_argument(dest="project_name", help="Project name.", type=str)
     preprocess_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
     preprocess_subparser.add_argument("-s", "--stage", default="all", dest="stage",
-                                      choices=["all", "bam2fastq", "fastqc", "trimming", "mapping",
+                                      choices=["all", "bam2fastq", "fastqc", "trim", "mapping",
                                                "shiftreads", "markduplicates", "removeduplicates",
                                                "indexbam", "qc", "maketracks"],
                                       help="Run only these stages. Default=all.", type=str)
@@ -452,19 +452,19 @@ def preprocess(args, logger):
                 tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".2.fastq"))
                 tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".unpaired.fastq"))
 
-        if args.stage in ["all", "trimadapters"]:
+        if args.stage in ["all", "trim"]:
             # TODO:
             # Change absolute path to something usable by everyone or to an option.
             jobCode += trimAdapters(
-                inputFastq1=os.path.join(dataDir, "fastq", sampleName + ".1.fastq"),
+                inputFastq1=os.path.join(dataDir, "fastq", sampleName + ".fastq") if not PE else os.path.join(dataDir, "fastq", sampleName + ".1.fastq"),
                 inputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.fastq") if PE else None,
-                outputFastq1=os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq"),
+                outputFastq1=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq") if not PE else os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq"),
                 outputFastq1unpaired=os.path.join(dataDir, "fastq", sampleName + ".1_unpaired.trimmed.fastq") if PE else None,
                 outputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.trimm.d.fastq") if PE else None,
                 outputFastq2unpaired=os.path.join(dataDir, "fastq", sampleName + ".2_unpaired.trimmed.fastq") if PE else None,
                 cpus=args.cpus,
                 adapters=adapterFasta,
-                log=os.path.join(resultsDir, sampleName + ".trimlog")
+                log=os.path.join(resultsDir, sampleName + ".trimlog.txt")
             )
             if not PE:
                 tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"))
@@ -1198,6 +1198,7 @@ def bam2fastq(inputBam, outputFastq, outputFastq2=None, unpairedFastq=None):
     """.format(inputBam)
     if outputFastq2 is None and unpairedFastq is None:
         command += """FASTQ={0}
+
     """.format(outputFastq)
     else:
         command += """FASTQ={0} \\
@@ -1240,14 +1241,15 @@ def trimAdapters(inputFastq1, outputFastq1, cpus, adapters, log,
     {0} \\
     {1} \\
     {2} \\
-    ILLUMINACLIP:{3}:1:40:15 \\
+    """.format(outputFastq1unpaired,
+               outputFastq2, outputFastq2unpaired)
+    command += """\\
+    ILLUMINACLIP:{0}:1:40:15 \\
     LEADING:3 TRAILING:3 \\
     SLIDINGWINDOW:4:10 \\
     MINLEN:36
 
-    """.format(outputFastq1unpaired,
-               outputFastq2, outputFastq2unpaired,
-               adapters)
+    """.format(adapters)
 
     return command
 
@@ -1271,7 +1273,7 @@ def bowtie2Map(inputFastq1, outputBam, log, genomeIndex, cpus, inputFastq2=None)
     -2 {1}""".format(inputFastq1, inputFastq2)
     command += """ | \\
     samtools view -S -b - | \\
-    samtools sort - {0} 2> \\
+    samtools sort - {0} 1> \\
     {1}
 
     """.format(outputBam, log)
@@ -1430,8 +1432,9 @@ def addTrackToHub(sampleName, trackURL, trackHub, colour, fivePrime=""):
     command = """
     # Adding track to TrackHub
     echo "Adding track to TrackHub"
-    echo 'track type=bigWig name="{0} {1}" description="{0} {1}" """.format(sampleName, fivePrime)
-    command += """height=32 visibility=full maxHeightPixels=32:32:25 bigDataUrl={0} color={1}' >> {2}
+    echo "track type=bigWig name='{0} {1}' description='{0} {1}' """.format(sampleName, fivePrime)
+    command += """height=32 visibility=full maxHeightPixels=32:32:25 bigDataUrl={0} color={1}" >> \\
+    {2}
 
     chmod 755 {2}
 

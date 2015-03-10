@@ -82,7 +82,7 @@ def main():
                                                "indexbam", "qc", "maketracks"],
                                       help="Run only these stages. Default=all.", type=str)
 
-    # preprocess
+    # stats
     stats_subparser = subparser.add_parser("stats")
     stats_subparser.add_argument(dest="project_name", help="Project name.", type=str)
     stats_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)

@@ -575,7 +575,7 @@ def preprocess(args, logger):
 
         # Submit to slurm
         if not args.dry_run:
-            logger.info("Submitting jobs to slurm")
+            logger.info("Submitting job to slurm: %s" % jobName)
             status = slurmSubmitJob(jobFile)
 
             if status != 0:
@@ -700,6 +700,7 @@ def analyse(args, logger):
 
     # read in
     samples = pd.read_csv(args.csv)
+    samples["peakFile"] = None
 
     # TODO:
     # Perform checks on the variables given
@@ -747,6 +748,13 @@ def analyse(args, logger):
         # Is it a histone?
         histone = True if any([i in samples["ip"][sample] for i in histones]) else False
 
+        # Is it a broad factor?
+        broad = False if samples["ip"][sample].upper() not in broadFactors else True
+
+        # peakFile
+        peakFile = os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks" + (".narrowPeak" if not broad else ".broadPeak"))
+        samples["peakFile"][sample] = peakFile
+
         jobName = projectName + "_" + sampleName
 
         tempFiles = list()
@@ -775,7 +783,7 @@ def analyse(args, logger):
                     outputDir=os.path.join(dataDir, "peaks", sampleName),
                     sampleName=sampleName,
                     genome=samples['genome'][sample],
-                    broad=False if samples["ip"][sample].upper() not in broadFactors else True
+                    broad=True if broad else False
                 )
             elif args.peak_caller == "spp":
                 # For point-source factors use default settings
@@ -786,7 +794,7 @@ def analyse(args, logger):
                     treatmentName=sampleName,
                     controlName=controlName,
                     outputDir=os.path.join(dataDir, "peaks", sampleName),
-                    broad=False if samples["ip"][sample].upper() not in broadFactors else True,
+                    broad=True if broad else False,
                     cpus=args.cpus
                 )
 
@@ -798,7 +806,7 @@ def analyse(args, logger):
             if not histone:
                 # For TFs, find the "self" motif
                 jobCode += homerFindMotifs(
-                    peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
+                    peakFile=peakFile,
                     genome=samples["genome"][sample],
                     outputDir=os.path.join(dataDir, "motifs", sampleName),
                     size="50",
@@ -807,7 +815,7 @@ def analyse(args, logger):
                 )
                 # For TFs, find co-binding motifs (broader region)
                 jobCode += homerFindMotifs(
-                    peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
+                    peakFile=peakFile,
                     genome=samples["genome"][sample],
                     outputDir=os.path.join(dataDir, "motifs", sampleName + "_cobinders"),
                     size="200",
@@ -817,7 +825,7 @@ def analyse(args, logger):
             else:
                 # For histones, use a broader region to find motifs
                 jobCode += homerFindMotifs(
-                    peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
+                    peakFile=peakFile,
                     genome=samples["genome"][sample],
                     outputDir=os.path.join(dataDir, "motifs", sampleName),
                     size="1000",
@@ -831,7 +839,7 @@ def analyse(args, logger):
             # figure a way of magetting the peak files withough using the peak_caller option
             # for that would imply taht option would be required when selecting this stage
             jobCode += centerPeaksOnMotifs(
-                peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
+                peakFile=peakFile,
                 genome=samples["genome"][sample],
                 windowWidth=args.peak_window_width,
                 motifFile=os.path.join(dataDir, "motifs", sampleName, "homerResults", "motif1.motif"),
@@ -844,7 +852,7 @@ def analyse(args, logger):
             # figure a way of getting the peak files withough using the peak_caller option
             # for that would imply taht option would be required when selecting this stage
             jobCode += AnnotatePeaks(
-                peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.narrowPeak"),
+                peakFile=peakFile,
                 genome=samples["genome"][sample],
                 motifFile=os.path.join(dataDir, "motifs", sampleName, "homerResults", "motif1.motif"),
                 outputBed=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifAnnotated.bed")
@@ -937,13 +945,13 @@ def compare(args, logger):
 
     # TODO:
     # Perform checks on the variables given
-    # (e.g. columns existing, bams existing)
+    # (e.g. columns existing, bams/peaks existing)
 
     # start pipeline
     projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
 
     variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "experimentName", "filePath", "controlSampleName"]
+    exclude = ["sampleNumber", "sampleName", "experimentName", "filePath", "controlSampleName", "peakFile"]
     [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
     # track jobs to submit
@@ -1077,6 +1085,8 @@ def makeDiffBindSheet(samples, df, peaksDir, sheetFile):
     # Complete rest of annotation
     df.loc[:, "ControlID"] = df['controlSampleName']
     df.loc[:, "bamControl"] = [samples[samples['sampleName'] == ctrl]["filePath"].tolist()[0] for ctrl in df['controlSampleName']]
+    # TODO:
+    # Change peak path according to narrow/broad
     df.loc[:, "Peaks"] = [os.path.join(peaksDir, sampleName, sampleName + "_peaks.narrowPeak") for sampleName in df["sampleName"]]
     df.loc[:, "PeakCaller"] = "macs"
 

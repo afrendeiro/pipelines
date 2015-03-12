@@ -369,6 +369,7 @@ def preprocess(args, logger):
     logger.debug("Checking which samples should be merged.")
     samplesMerged = getReplicates(samples.copy())
     # ^^ this is the new annotation sheet as well
+    samplesMerged['readType'] = None
 
     # Preprocess samples
     for sample in range(len(samplesMerged)):
@@ -380,6 +381,7 @@ def preprocess(args, logger):
 
         # check if sample is paired end
         PE = isPairedEnd(samplesMerged["filePath"][sample][0])
+        samplesMerged['readType'][sample] = "True" if PE else "False"
 
         # check if sample is tagmented or not:
         tagmented = True if samplesMerged["technique"][sample] in tagment else False

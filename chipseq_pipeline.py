@@ -238,18 +238,15 @@ def getReplicates(samples):
 
     """
     # ignore some fields in the annotation sheet
-    variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "experimentName", "filePath", "controlSampleName"]
-    [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
-    varsName = list(variables)
+    varsName = ["cellLine", "numberCells", "technique", "ip", "patient", "treatment", "biologicalReplicate", "technicalReplicate", "genome"]
 
     # get sample names
-    samples["sampleName"] = ["_".join([str(j) for j in samples.ix[i][variables]]) for i in samples.index]
+    samples["sampleName"] = ["_".join([str(j) for j in samples.ix[i][varsName]]) for i in samples.index]
 
     samplesMerged = samples.copy()
 
     # get merged technical replicates -> biological replicates
-    variables.pop(variables.index("technicalReplicate"))
+    variables = ["cellLine", "numberCells", "technique", "ip", "patient", "treatment", "biologicalReplicate", "genome"]
 
     for key, values in samples.groupby(variables).groups.items():
         rep = samples.ix[values][varsName].reset_index(drop=True).ix[0]
@@ -262,7 +259,7 @@ def getReplicates(samples):
             samplesMerged = samplesMerged.append(rep, ignore_index=True)
 
     # get merged biological replicates -> merged biological replicates
-    variables.pop(variables.index("biologicalReplicate"))
+    variables = ["cellLine", "numberCells", "technique", "ip", "patient", "treatment", "genome"]
 
     for key, values in samples.groupby(variables).groups.items():
         rep = samples.ix[values][varsName].reset_index(drop=True).ix[0]
@@ -620,9 +617,7 @@ def readStats(args, logger):
     # read in
     samples = pd.read_csv(args.csv)
 
-    variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "experimentName", "filePath", "controlSampleName"]
-    [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
+    variables = ["cellLine", "numberCells", "technique", "ip", "patient", "treatment", "biologicalReplicate", "technicalReplicate", "genome"]
 
     cols = ["unpairedReadsExamined", "readPairsExamined", "unmappedReads", "unpairedReadDuplicates",
             "readPairDuplicates", "readPairOpticalDuplicates", "percentDuplication", "estimatedLibrarySize"]
@@ -701,6 +696,7 @@ def analyse(args, logger):
 
     # read in
     samples = pd.read_csv(args.csv)
+    samples["controlSampleFilePath"] = None
     samples["peakFile"] = None
 
     # TODO:
@@ -711,9 +707,7 @@ def analyse(args, logger):
     projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
 
     # Preprocess samples
-    variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "experimentName", "filePath", "controlSampleName"]
-    [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
+    variables = ["cellLine", "numberCells", "technique", "ip", "patient", "treatment", "biologicalReplicate", "technicalReplicate", "genome"]
 
     # track jobs to submit
     jobs = dict()
@@ -738,6 +732,7 @@ def analyse(args, logger):
             control = True
             controlName = samples.ix[sample]["controlSampleName"]
             controlBam = os.path.abspath(ctrlField.values[0])
+            samples["controlSampleFilePath"][sample] = controlBam
 
         # skip samples without matched control
         if not control:
@@ -914,7 +909,7 @@ def analyse(args, logger):
             logger.debug("Project '%s'submission finished successfully." % args.project_name)
 
     # write original annotation sheet to project folder
-    samples.to_csv(os.path.join(projectDir, args.project_name + ".biol_replicates.annotation_sheet.csv"), index=False)
+    samples.to_csv(os.path.join(projectDir, args.project_name + ".replicates.annotation_sheet.csv"), index=False)
 
     logger.debug("Finished comparison")
 
@@ -950,10 +945,6 @@ def compare(args, logger):
 
     # start pipeline
     projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
-
-    variables = samples.columns.tolist()
-    exclude = ["sampleNumber", "sampleName", "experimentName", "filePath", "controlSampleName", "peakFile"]
-    [variables.pop(variables.index(exc)) for exc in exclude if exc in variables]
 
     # track jobs to submit
     jobs = dict()

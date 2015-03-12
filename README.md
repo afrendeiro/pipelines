@@ -13,20 +13,20 @@ Tasks include raw sequencing quality control, adapter removal, read trimming, ma
 I recommend creating a virtual environment to install dependencies to running the pipeline.
 
 First, make sure you work with python 2.7 or higher:
-	
-	module load python/2.7.6
+    
+    module load python/2.7.6
 
 Get virtualenv:
 
-	curl -L -o virtualenv.py https://raw.githubusercontent.com/pypa/virtualenv/master/virtualenv.py
+    curl -L -o virtualenv.py https://raw.githubusercontent.com/pypa/virtualenv/master/virtualenv.py
 
 Create a virtual environment named `<name>`:
 
-	python virtualenv.py <name>
+    python virtualenv.py <name>
 
 Activate the environment:
 
-	source <name>/bin/activate
+    source <name>/bin/activate
 
 Clone the repository
 
@@ -35,7 +35,7 @@ Clone the repository
 
 Install Python requirements:
 
-	pip install -r requirements.txt
+    pip install -r requirements.txt
 
 Good to go!
 
@@ -47,5 +47,27 @@ It uses the following software, which is available in the CeMM cluster:
 - Samtools
 - Bamtools
 
+# Project structure
+```
+projectsroot
+|__ projectname
+    |__ runs
+    |__ data
+    |   |__ fastq
+    |   |__ fastqc
+    |   |__ raw
+    |   |__ mapped
+    |   |__ coverage
+    |   |__ peaks
+    |   |__ motifs
+    |__ results
+         |__ plots
 
+htmlroot
+|__ projectname
+    |__ bigwig
+```
 
+JSON description [here](https://github.com/arendeiro/chipseq-pipelines/blob/master/projectPaths.json).
+
+A thorough documentation of the folders will come in due time.

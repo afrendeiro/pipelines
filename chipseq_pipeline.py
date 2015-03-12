@@ -1574,6 +1574,7 @@ def centerPeaksOnMotifs(peakFile, genome, windowWidth, motifFile, outputBed):
     {1} \\
     -size {2} -center {3} | \\
     awk -v OFS='\\t' '{{print $2, $3, $4, $1, $6, $5}}' | \\
+    awk -v OFS='\\t' -F '\t' '{ gsub("0", "+", $6) ; gsub("1", "-", $6) ; print }' | \\
     python {5}/lib/fix_bedfile_genome_boundaries.py {1} | \\
     sortBed > {4}
     """.format(peakFile, genome, windowWidth, motifFile, outputBed,

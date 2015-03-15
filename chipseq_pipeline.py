@@ -81,6 +81,10 @@ def main():
                                                "shiftreads", "markduplicates", "removeduplicates",
                                                "indexbam", "qc", "maketracks"],
                                       help="Run only these stages. Default=all.", type=str)
+    preprocess_subparser.add_argument("-i", "--max-insert-size", default=2000,
+                                      dest="maxinsert",
+                                      help="Maximum allowed insert size allowed for paired end mates. Default=2000.",
+                                      type=int)
 
     # stats
     stats_subparser = subparser.add_parser("stats")
@@ -274,9 +278,6 @@ def getReplicates(samples):
                 # append biological replicate to sample annotation
                 samplesMerged = samplesMerged.append(rep, ignore_index=True)
 
-    # add field for manual sample pairing
-    samplesMerged["controlSampleName"] = None
-
     # replace sample name with list of sample names for only one sample (original case)
     for i in range(len(samplesMerged)):
         if type(samplesMerged["filePath"][i]) is not list:
@@ -328,7 +329,9 @@ def preprocess(args, logger):
         "H3K27ME1": "0,114,178", "H3K27ME2": "0,114,178", "H3K27ME3": "0,114,178",  # blue
         "H3K9ME1": "86,180,233", "H3K9ME2": "86,180,233", "H3K9ME3": "86,180,233",  # sky blue
         "H3AC": "213,94,0", "H3K9AC": "213,94,0", "H3K27AC": "213,94,0", "H3K56AC": "213,94,0", "H3K56AC": "213,94,0",  # vermillion
-        "H3K79ME1": "204,121,167", "H3K79ME2": "204,121,167", "H3K79ME3": "204,121,167"  # reddish purple
+        "H3K79ME1": "204,121,167", "H3K79ME2": "204,121,167", "H3K79ME3": "204,121,167",  # reddish purple
+        "ATAC": "0,158,115",
+        "DNASE": "0,158,115",
     }
 
     colour_gradient = [  # 10 colour gradient from red to blue
@@ -370,6 +373,10 @@ def preprocess(args, logger):
     samplesMerged = getReplicates(samples.copy())
     # ^^ this is the new annotation sheet as well
     samplesMerged['readType'] = None
+    samplesMerged['readLength'] = None
+
+    # add field for manual sample pairing
+    samplesMerged["controlSampleName"] = None
 
     # Preprocess samples
     for sample in range(len(samplesMerged)):
@@ -380,11 +387,11 @@ def preprocess(args, logger):
         jobName = projectName + "_" + sampleName
 
         # check if sample is paired end
-        PE = isPairedEnd(samplesMerged["filePath"][sample][0])
-        samplesMerged['readType'][sample] = "True" if PE else "False"
+        readType, readLength = getReadType(samplesMerged["filePath"][sample][0])
+        samplesMerged['readType'][sample] = readType
+        samplesMerged['readLength'][sample] = readLength
 
-        # TODO:
-        # Get read length
+        PE = True if readType == "PE" else False
 
         # check if sample is tagmented or not:
         tagmented = True if samplesMerged["technique"][sample] in tagment else False
@@ -401,10 +408,15 @@ def preprocess(args, logger):
             bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted")
 
         # get colour for tracks
-        if samplesMerged["ip"][sample].upper() in colours.keys():
+        if str(samplesMerged["ip"][sample]).upper() in colours.keys():
             colour = colours[samplesMerged["ip"][sample].upper()]
         else:
-            colour = random.sample(colour_gradient, 1)[0]  # pick one randomly
+            if samplesMerged["technique"][sample] in ["ATAC", "ATACSEQ", "ATAC-SEQ"]:
+                colour = colours["ATAC"]
+            elif samplesMerged["technique"][sample] in ["DNASE", "DNASESEQ", "DNASE-SEQ"]:
+                colour = colours["DNASE"]
+            else:
+                colour = random.sample(colour_gradient, 1)[0]  # pick one randomly
 
         # keep track of temporary files
         tempFiles = list()
@@ -488,6 +500,7 @@ def preprocess(args, logger):
                 outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
                 log=os.path.join(resultsDir, sampleName + ".alnRates.txt"),
                 genomeIndex=genomeIndexes[samplesMerged["genome"][sample]],
+                maxInsert=args.maxinsert,
                 cpus=args.cpus
             )
             tempFiles.append(os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"))
@@ -592,7 +605,10 @@ def preprocess(args, logger):
     # write original annotation sheet to project folder
     samples.to_csv(os.path.join(projectDir, args.project_name + ".annotation_sheet.csv"), index=False)
     # write annotation sheet with biological replicates to project folder
-    samplesMerged.to_csv(os.path.join(projectDir, args.project_name + ".replicates.annotation_sheet.csv"), index=False)
+    samplesMerged.to_csv(
+        os.path.join(projectDir, args.project_name + ".replicates.annotation_sheet.csv"),
+        index=False
+    )
 
     logger.debug("Finished preprocessing")
 
@@ -622,7 +638,8 @@ def readStats(args, logger):
     # read in
     samples = pd.read_csv(args.csv)
 
-    variables = ["cellLine", "numberCells", "technique", "ip", "patient", "treatment", "biologicalReplicate", "technicalReplicate", "genome"]
+    variables = ["cellLine", "numberCells", "technique", "ip", "patient",
+                 "treatment", "biologicalReplicate", "technicalReplicate", "genome"]
 
     cols = ["unpairedReadsExamined", "readPairsExamined", "unmappedReads", "unpairedReadDuplicates",
             "readPairDuplicates", "readPairOpticalDuplicates", "percentDuplication", "estimatedLibrarySize"]
@@ -644,7 +661,12 @@ def readStats(args, logger):
 
         # Get duplicates
         try:
-            dups = pd.read_csv(os.path.join(resultsDir, sampleName + ".duplicates.txt"), sep="\t", comment="#", header=1)
+            dups = pd.read_csv(
+                os.path.join(resultsDir, sampleName + ".duplicates.txt"),
+                sep="\t",
+                comment="#",
+                header=1
+            )
         except IOError("Record with duplicates not found for sample %s" % sampleName):
             continue
         dups.dropna(thresh=len(dups.columns) - 1, inplace=True)
@@ -712,7 +734,8 @@ def analyse(args, logger):
     projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
 
     # Preprocess samples
-    variables = ["cellLine", "numberCells", "technique", "ip", "patient", "treatment", "biologicalReplicate", "technicalReplicate", "genome"]
+    variables = ["cellLine", "numberCells", "technique", "ip", "patient",
+                 "treatment", "biologicalReplicate", "technicalReplicate", "genome"]
 
     # track jobs to submit
     jobs = dict()
@@ -753,7 +776,10 @@ def analyse(args, logger):
         broad = False if samples["ip"][sample].upper() not in broadFactors else True
 
         # peakFile
-        peakFile = os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks" + (".narrowPeak" if not broad else ".broadPeak"))
+        peakFile = os.path.join(
+            dataDir, "peaks", sampleName,
+            sampleName + "_peaks" + (".narrowPeak" if not broad else ".broadPeak")
+        )
         samples["peakFile"][sample] = peakFile
 
         jobName = projectName + "_" + sampleName
@@ -914,7 +940,10 @@ def analyse(args, logger):
             logger.debug("Project '%s'submission finished successfully." % args.project_name)
 
     # write original annotation sheet to project folder
-    samples.to_csv(os.path.join(projectDir, args.project_name + ".replicates.annotation_sheet.csv"), index=False)
+    samples.to_csv(
+        os.path.join(projectDir, args.project_name + ".replicates.annotation_sheet.csv"),
+        index=False
+    )
 
     logger.debug("Finished comparison")
 
@@ -973,7 +1002,10 @@ def compare(args, logger):
                 diffBindSheetFile = os.path.join(projectDir, "runs", jobName + ".csv")
 
                 # make diffBind csv file, save it
-                empty = makeDiffBindSheet(samples, samples.ix[IP_groups[IP]], os.path.join(dataDir, "peaks"), diffBindSheetFile)
+                empty = makeDiffBindSheet(
+                    samples, samples.ix[IP_groups[IP]], os.path.join(dataDir, "peaks"),
+                    diffBindSheetFile
+                )
                 # ^^ returns Bool for empty diffBind sheet
 
                 if not empty:
@@ -1046,22 +1078,34 @@ def compare(args, logger):
             os.path.join(projectDir, "runs", args.project_name + ".log"))
 
 
-def isPairedEnd(sampleFile, n=10):
-    p = subprocess.Popen(['samtools', 'view', sampleFile], stdout=subprocess.PIPE)
+def getReadType(bamFile, n=10):
+    """
+    Gets the read type (single, paired) and length of bam file.
+    Returns tuple of (readType=string, readLength=int).
+    """
+    from collections import Counter
+    p = subprocess.Popen(['samtools', 'view', bamFile], stdout=subprocess.PIPE)
 
     # Count paired alignments
     paired = 0
+    readLength = Counter()
     while n > 0:
-        flag = int(p.stdout.next().split("\t")[1])
+        line = p.stdout.next().split("\t")
+        flag = int(line[1])
+        readLength[len(line[9])] += 1
         if 1 & flag:  # check decimal flag contains 1 (paired)
             paired += 1
         n -= 1
     p.kill()
+
+    # Get most abundant read readLength
+    readLength = sorted(readLength)[-1]
+
     # If at least half is paired, return True
     if paired > (n / 2):
-        return True
+        return ("PE", readLength)
     else:
-        return False
+        return ("SE", readLength)
 
 
 def makeDiffBindSheet(samples, df, peaksDir, sheetFile):
@@ -1261,9 +1305,9 @@ def trimAdapters(inputFastq1, outputFastq1, cpus, adapters, log,
     return command
 
 
-def bowtie2Map(inputFastq1, outputBam, log, genomeIndex, cpus, inputFastq2=None):
+def bowtie2Map(inputFastq1, outputBam, log, genomeIndex, maxInsert, cpus, inputFastq2=None):
     outputBam = re.sub("\.bam$", "", outputBam)
-    # Will only admit <500bp-long fragments. Change with --maxins option
+    # Admits 2000bp-long fragments (--maxins option)
     command = """
     # Mapping reads with Bowtie2
     echo "Mapping reads with Bowtie2"
@@ -1276,8 +1320,8 @@ def bowtie2Map(inputFastq1, outputBam, log, genomeIndex, cpus, inputFastq2=None)
     if inputFastq2 is None:
         command += "{0} ".format(inputFastq1)
     else:
-        command += """-1 {0} \\
-    -2 {1}""".format(inputFastq1, inputFastq2)
+        command += """--maxins {0} -1 {1} \\
+    -2 {2}""".format(maxInsert, inputFastq1, inputFastq2)
     command += """ | \\
     samtools view -S -b - | \\
     samtools sort - {0} 1> \\

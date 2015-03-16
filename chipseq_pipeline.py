@@ -378,10 +378,10 @@ def preprocess(args, logger):
     # add field for manual sample pairing
     samplesMerged["controlSampleName"] = None
 
-    # For genome in genomes:
-    # add track position to:
-    # os.path.join(htmlDir, "trackHub_{0}.txt".format(genome)
-    #
+    # add track headers to track hubs
+    for genome in samplesMerged["genome"].unique():
+        with open(os.path.join(htmlDir, "trackHub_{0}.txt".format(genome), "w")) as handle:
+            handle.write("browser position chr21:28,049,584-38,023,583")
 
     # Preprocess samples
     for sample in range(len(samplesMerged)):

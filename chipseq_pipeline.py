@@ -480,7 +480,7 @@ def preprocess(args, logger):
                 inputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.fastq") if PE else None,
                 outputFastq1=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq") if not PE else os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq"),
                 outputFastq1unpaired=os.path.join(dataDir, "fastq", sampleName + ".1_unpaired.trimmed.fastq") if PE else None,
-                outputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.trimm.d.fastq") if PE else None,
+                outputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq") if PE else None,
                 outputFastq2unpaired=os.path.join(dataDir, "fastq", sampleName + ".2_unpaired.trimmed.fastq") if PE else None,
                 cpus=args.cpus,
                 adapters=adapterFasta,

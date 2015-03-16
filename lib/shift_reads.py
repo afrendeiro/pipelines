@@ -30,15 +30,15 @@ for row in csv.reader(iter(sys.stdin.readline, ''), delimiter='\t'):
     if row[0][0] == "@":
         wr.writerow(row)
     else:
-        strand = int(row[1])
+        flag = int(row[1])
         chrm = row[2]
 
-        if strand == 0:
+        if flag & 16 == 0:
             if int(row[3]) + 4 + 51 < chrms[chrm]:
                 row[3] = int(row[3]) + 4
             else:
                 continue
-        elif strand == 16:
+        elif flag & 16 == 16:
             if int(row[3]) - 5 - 51 >= 1:
                 row[3] = int(row[3]) - 5
             else:

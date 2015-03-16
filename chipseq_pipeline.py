@@ -378,6 +378,11 @@ def preprocess(args, logger):
     # add field for manual sample pairing
     samplesMerged["controlSampleName"] = None
 
+    # For genome in genomes:
+    # add track position to:
+    # os.path.join(htmlDir, "trackHub_{0}.txt".format(genome)
+    #
+
     # Preprocess samples
     for sample in range(len(samplesMerged)):
         # Get sample name

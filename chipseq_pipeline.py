@@ -380,8 +380,8 @@ def preprocess(args, logger):
 
     # add track headers to track hubs
     for genome in samplesMerged["genome"].unique():
-        with open(os.path.join(htmlDir, "trackHub_{0}.txt".format(genome), "w")) as handle:
-            handle.write("browser position chr21:28,049,584-38,023,583")
+        with open(os.path.join(htmlDir, "trackHub_{0}.txt".format(genome)), "w") as handle:
+            handle.write("browser position chr21:28,049,584-38,023,583\n")
 
     # Preprocess samples
     for sample in range(len(samplesMerged)):
@@ -651,6 +651,9 @@ def readStats(args, logger):
     for col in cols:
         samples[col] = None
 
+    if "peakFile" in samples.columns:
+        samples["peakNumber"] = None
+
     for sample in xrange(len(samples)):
         # Sample name
         # if sampleName is not provided, use a concatenation of several variable (excluding longest)
@@ -666,19 +669,32 @@ def readStats(args, logger):
 
         # Get duplicates
         try:
+            print os.path.join(resultsDir, sampleName + ".duplicates.txt")
             dups = pd.read_csv(
                 os.path.join(resultsDir, sampleName + ".duplicates.txt"),
                 sep="\t",
                 comment="#",
                 header=1
             )
-        except IOError("Record with duplicates not found for sample %s" % sampleName):
+        except ValueError:
+            logger.warn("Record with duplicates is empty for sample %s" % sampleName)
+            continue
+        except IOError:
+            logger.warn("Record with duplicates not found for sample %s" % sampleName)
             continue
         dups.dropna(thresh=len(dups.columns) - 1, inplace=True)
 
         # Add values to sample sheet
         for col in range(len(cols)):
-            samples[cols[col]][sample] = dups.drop(["LIBRARY"], axis=1).ix[0][col]
+            samples.loc[sample, cols[col]] = dups.drop(["LIBRARY"], axis=1).ix[0][col]
+
+        # Count peak number if peaks in sheet
+        if "peakFile" in samples.columns:
+            # and if sample has peaks
+            if str(samples["peakFile"][sample]) != "nan":
+                proc = subprocess.Popen(["wc", "-l", samples["peakFile"][sample]], stdout=subprocess.PIPE)
+                (out, err) = proc.communicate()
+                samples.loc[sample, "peakNumber"] = re.sub("\D.*", "", out)
 
     # write annotation sheet with biological replicates
     samples.to_csv(os.path.join(projectDir, args.project_name + ".read_stats.csv"), index=False)

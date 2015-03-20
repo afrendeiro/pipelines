@@ -1316,7 +1316,7 @@ def trimAdapters(inputFastq1, outputFastq1, cpus, adapters, log,
     """.format(outputFastq1unpaired,
                outputFastq2, outputFastq2unpaired)
     command += """\\
-    ILLUMINACLIP:{0}:1:40:15 \\
+    ILLUMINACLIP:{0}:1:40:15:8:true \\
     LEADING:3 TRAILING:3 \\
     SLIDINGWINDOW:4:10 \\
     MINLEN:36

@@ -81,6 +81,8 @@ def main():
                                                "shiftreads", "markduplicates", "removeduplicates",
                                                "indexbam", "qc", "maketracks"],
                                       help="Run only these stages. Default=all.", type=str)
+    preprocess_subparser.add_argument("--trimmer", default="skewer", choices=["trimmomatic", "skewer"],
+                                      dest="trimmer", help="Trimmer to use. Default=skewer.", type=str)
     preprocess_subparser.add_argument("-i", "--max-insert-size", default=2000,
                                       dest="maxinsert",
                                       help="Maximum allowed insert size allowed for paired end mates. Default=2000.",
@@ -475,24 +477,57 @@ def preprocess(args, logger):
         if args.stage in ["all", "trim"]:
             # TODO:
             # Change absolute path to something usable by everyone or to an option.
-            jobCode += trimAdapters(
-                inputFastq1=os.path.join(dataDir, "fastq", sampleName + ".fastq") if not PE else os.path.join(dataDir, "fastq", sampleName + ".1.fastq"),
-                inputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.fastq") if PE else None,
-                outputFastq1=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq") if not PE else os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq"),
-                outputFastq1unpaired=os.path.join(dataDir, "fastq", sampleName + ".1_unpaired.trimmed.fastq") if PE else None,
-                outputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq") if PE else None,
-                outputFastq2unpaired=os.path.join(dataDir, "fastq", sampleName + ".2_unpaired.trimmed.fastq") if PE else None,
-                cpus=args.cpus,
-                adapters=adapterFasta,
-                log=os.path.join(resultsDir, sampleName + ".trimlog.txt")
-            )
-            if not PE:
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"))
-            else:
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq"))
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq"))
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".1_unpaired.trimmed.fastq"))
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".2_unpaired.trimmed.fastq"))
+            if args.trimmer == "trimmomatic":
+                jobCode += trimmomatic(
+                    inputFastq1=os.path.join(dataDir, "fastq", sampleName + ".fastq") if not PE else os.path.join(dataDir, "fastq", sampleName + ".1.fastq"),
+                    inputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.fastq") if PE else None,
+                    outputFastq1=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq") if not PE else os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq"),
+                    outputFastq1unpaired=os.path.join(dataDir, "fastq", sampleName + ".1_unpaired.trimmed.fastq") if PE else None,
+                    outputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq") if PE else None,
+                    outputFastq2unpaired=os.path.join(dataDir, "fastq", sampleName + ".2_unpaired.trimmed.fastq") if PE else None,
+                    cpus=args.cpus,
+                    adapters=adapterFasta,
+                    log=os.path.join(resultsDir, sampleName + ".trimlog.txt")
+                )
+                if not PE:
+                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"))
+                else:
+                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq"))
+                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq"))
+                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".1_unpaired.trimmed.fastq"))
+                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".2_unpaired.trimmed.fastq"))
+
+            if args.trimmer == "skewer":
+                jobCode += skewer(
+                    inputFastq1=os.path.join(dataDir, "fastq", sampleName + ".fastq") if not PE else os.path.join(dataDir, "fastq", sampleName + ".1.fastq"),
+                    inputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.fastq") if PE else None,
+                    outputPrefix=os.path.join(dataDir, "fastq", sampleName),
+                    cpus=args.cpus,
+                    adapters=adapterFasta
+                )
+                # move files to have common name
+                if not PE:
+                    jobCode += moveFile(
+                        os.path.join(dataDir, "fastq", sampleName + "-trimmed.fastq"),
+                        os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq")
+                    )
+                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"))
+                else:
+                    jobCode += moveFile(
+                        os.path.join(dataDir, "fastq", sampleName + "-trimmed-pair1.fastq"),
+                        os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq")
+                    )
+                    jobCode += moveFile(
+                        os.path.join(dataDir, "fastq", sampleName + "-trimmed-pair2.fastq"),
+                        os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq")
+                    )
+                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq"))
+                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq"))
+                # move log to results dir
+                jobCode += moveFile(
+                    os.path.join(dataDir, "fastq", sampleName + "-trimmed.log"),
+                    os.path.join(resultsDir, sampleName + ".trimlog.txt")
+                )
 
         if args.stage in ["all", "mapping"]:
             if samplesMerged["genome"][sample] not in genomeIndexes:
@@ -1220,6 +1255,15 @@ def removeFile(fileName):
     return command
 
 
+def moveFile(old, new):
+    command = """
+    # Removing file
+    mv {0} {1}
+    """.format(old, new)
+
+    return command
+
+
 def makeDir(directory):
     command = """
     # Removing file
@@ -1282,9 +1326,9 @@ def bam2fastq(inputBam, outputFastq, outputFastq2=None, unpairedFastq=None):
     return command
 
 
-def trimAdapters(inputFastq1, outputFastq1, cpus, adapters, log,
-                 inputFastq2=None, outputFastq1unpaired=None,
-                 outputFastq2=None, outputFastq2unpaired=None):
+def trimmomatic(inputFastq1, outputFastq1, cpus, adapters, log,
+                inputFastq2=None, outputFastq1unpaired=None,
+                outputFastq2=None, outputFastq2unpaired=None):
 
     PE = False if inputFastq2 is None else True
     pe = "PE" if PE else "SE"
@@ -1326,6 +1370,31 @@ def trimAdapters(inputFastq1, outputFastq1, cpus, adapters, log,
     return command
 
 
+def skewer(inputFastq1, outputPrefix, cpus, adapters, inputFastq2=None):
+
+    PE = False if inputFastq2 is None else True
+    mode = "pe" if PE else "any"
+
+    command = """
+    # Trimming adapters from sample
+    echo "Trimming adapters from sample"
+
+    skewer \\
+    -t {0} \\
+    -m {1} \\
+    -x {2} \\
+    -o {3} \\
+    {4} """.format(cpus, mode, adapters, outputPrefix, inputFastq1)
+
+    if inputFastq2 is not None:
+        command += """\\
+    {0}
+
+    """.format(inputFastq2)
+
+    return command
+
+
 def bowtie2Map(inputFastq1, outputBam, log, genomeIndex, maxInsert, cpus, inputFastq2=None):
     outputBam = re.sub("\.bam$", "", outputBam)
     # Admits 2000bp-long fragments (--maxins option)
@@ -1337,7 +1406,8 @@ def bowtie2Map(inputFastq1, outputBam, log, genomeIndex, maxInsert, cpus, inputF
 
     bowtie2 --very-sensitive -p {0} \\
     -x {1} \\
-    """.format(cpus, genomeIndex)
+    --met-file {2} \\
+    """.format(cpus, genomeIndex, log)
     if inputFastq2 is None:
         command += "{0} ".format(inputFastq1)
     else:
@@ -1345,10 +1415,9 @@ def bowtie2Map(inputFastq1, outputBam, log, genomeIndex, maxInsert, cpus, inputF
     -2 {2}""".format(maxInsert, inputFastq1, inputFastq2)
     command += """ | \\
     samtools view -S -b - | \\
-    samtools sort - {0} 1> \\
-    {1}
+    samtools sort - {0}
 
-    """.format(outputBam, log)
+    """.format(outputBam)
 
     return command
 

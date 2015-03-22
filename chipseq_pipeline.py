@@ -812,7 +812,7 @@ def analyse(args, logger):
         # ^^ doesn't mean it has something (i.e. is empty if no control sample is indicated)
 
         # if there is only one record, use that as control
-        if len(ctrlField) == 1:
+        if len(ctrlField) == 1 and type(ctrlField.values[0]) == str:
             control = True
             controlName = samples.ix[sample]["controlSampleName"]
             controlBam = os.path.abspath(ctrlField.values[0])
@@ -1257,7 +1257,8 @@ def removeFile(fileName):
 
 def moveFile(old, new):
     command = """
-    # Removing file
+    # Moving file
+
     mv {0} {1}
     """.format(old, new)
 

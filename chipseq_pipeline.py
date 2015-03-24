@@ -683,6 +683,7 @@ def readStats(args, logger):
 
     cols = ["unpairedReadsExamined", "readPairsExamined", "unmappedReads", "unpairedReadDuplicates",
             "readPairDuplicates", "readPairOpticalDuplicates", "percentDuplication", "estimatedLibrarySize"]
+    samples["totalReads"] = None
     for col in cols:
         samples[col] = None
 
@@ -698,38 +699,47 @@ def readStats(args, logger):
             sampleName = string.join([str(samples[var][sample]) for var in variables], sep="_")
             logger.debug("No sample name provided, using concatenation of variables supplied")
 
-        # TODO:
-        # Get read numbers and alignment rates from
-        # os.path.join(resultsDir, sampleName + ".alnRates.txt"),
-
-        # Get duplicates
+        # Get alignment stats
         try:
-            print os.path.join(resultsDir, sampleName + ".duplicates.txt")
+            # read in
+            reads = pd.read_csv(
+                os.path.join(resultsDir, sampleName + ".alnRates.txt"),
+                sep="\t"
+            )
+            # add to dataFrame
+            samples.loc[sample, "totalReads"] = reads.loc[0, 'Read']
+        except:
+            logger.warn("Record with duplicates is empty or not found for sample %s" % sampleName)
+            pass
+
+        # Get duplicate stats
+        try:
             dups = pd.read_csv(
                 os.path.join(resultsDir, sampleName + ".duplicates.txt"),
                 sep="\t",
                 comment="#",
                 header=1
             )
-        except ValueError:
-            logger.warn("Record with duplicates is empty for sample %s" % sampleName)
-            continue
-        except IOError:
-            logger.warn("Record with duplicates not found for sample %s" % sampleName)
-            continue
-        dups.dropna(thresh=len(dups.columns) - 1, inplace=True)
+            # drop if empty
+            dups.dropna(thresh=len(dups.columns) - 1, inplace=True)
 
-        # Add values to sample sheet
-        for col in range(len(cols)):
-            samples.loc[sample, cols[col]] = dups.drop(["LIBRARY"], axis=1).ix[0][col]
+            # Add values to sample sheet
+            for col in range(len(cols)):
+                samples.loc[sample, cols[col]] = dups.drop(["LIBRARY"], axis=1).ix[0][col]
+        except:
+            logger.warn("Record with duplicates is empty or not found for sample %s" % sampleName)
+            pass
 
-        # Count peak number if peaks in sheet
+        # Count peak number (if peaks in sheet)
         if "peakFile" in samples.columns:
             # and if sample has peaks
             if str(samples["peakFile"][sample]) != "nan":
                 proc = subprocess.Popen(["wc", "-l", samples["peakFile"][sample]], stdout=subprocess.PIPE)
-                (out, err) = proc.communicate()
+                out, err = proc.communicate()
                 samples.loc[sample, "peakNumber"] = re.sub("\D.*", "", out)
+
+    # convert duplicates to percentage
+    samples.loc[:, 'percentDuplication'] = samples['percentDuplication'] * 100
 
     # write annotation sheet with biological replicates
     samples.to_csv(os.path.join(projectDir, args.project_name + ".read_stats.csv"), index=False)
@@ -1602,7 +1612,7 @@ def linkToTrackHub(trackHubURL, fileName, genome):
         handle.write(textwrap.dedent(html))
 
 
-def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broad=False):
+def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broad=False, plot=True):
     if genome == "hg19":
         genome = "hs"
     elif genome == "mm10":
@@ -1611,7 +1621,6 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broa
         raise ValueError("Genome dr7 not yet supported for peak calling with MACS2.")
 
     if not broad:
-        # Check wth Christian if fragment length should be different for ChIP or CM
         command = """
     # Call peaks with MACS2
     echo "Calling peaks with MACS2"
@@ -1623,6 +1632,19 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broa
     -g {2} -n {3} --outdir {4}
 
     """.format(treatmentBam, controlBam, genome, sampleName, outputDir)
+        command = """
+    # Call peaks with MACS2
+    echo "Calling peaks with MACS2"
+
+    macs2 callpeak \\
+    -t {0} \\
+    -c {1} \\
+    --bw 200 \\
+    --fix-bimodal --extsize 200 \\
+    -g {2} -n {3} --outdir {4}
+
+    """.format(treatmentBam, controlBam, genome, sampleName, outputDir)
+
     else:
         # Parameter setting for broad factors according to Nature Protocols (2012)
         # Vol.7 No.9 1728-1740 doi:10.1038/nprot.2012.101 Protocol (D) for H3K36me3
@@ -1638,7 +1660,8 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broa
 
     """.format(treatmentBam, controlBam, genome, sampleName, outputDir)
 
-    command += """
+    if plot:
+        command += """
     # Plot MACS2 crosscorrelation
 
     echo "Plotting MACS2 crosscorrelation"

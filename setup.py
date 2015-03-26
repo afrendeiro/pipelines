@@ -16,7 +16,7 @@ setup(
     license="GPL2",
     packages=["chipseq_pipelines"],
     install_requires=["numpy", "pandas"],
-    scripts=["bin/chipseq_pipelines"],
+    scripts=["chipseq-pipelines/chipseq_pipeline"],
     include_package_data=True,
     zip_safe=False
 )

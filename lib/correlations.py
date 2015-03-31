@@ -24,12 +24,8 @@ def main(args):
     # Global options
     # positional arguments
     parser.add_argument(dest='plots_dir', type=str, help='Directory to save plots to.')
-    parser.add_argument('bamfiles', nargs='*', help='bamFiles')
+    parser.add_argument('covFiles', nargs='*', help='covFiles')
     # optional arguments
-    parser.add_argument('--duplicates', dest='duplicates', action='store_true')
-    parser.add_argument('--window-width', dest='window_width', type=int, default=1000)
-    parser.add_argument('--fragment-size', dest='fragment_size', type=int, default=50)
-    parser.add_argument('--genome', dest='genome', type=str, default='hg19')
 
     args = parser.parse_args()
 
@@ -61,86 +57,25 @@ def main(args):
         }
     """)
 
-
-    # Get sample names
-    names = [re.sub(os.path.basename(bam), "\.bam", "") for bam in args.bamfiles]
-
-    # Get genome-wide windows
-    windows = makeWindows(args.window_width, args.genome)
-
-    # Loop through all signals, compute coverage in bed regions, append to dict
-    rawSignals = dict()
-    for bam in xrange(len(args.bamfiles)):
-        # Load bam
-        bamfile = HTSeq.BAM_Reader(args.bamfiles[bam])
-        # Get dataframe of bam coverage in bed regions, append to dict
-        rawSignals[names[bam]] = coverage(bamfile, windows, args.fragment_size, args.duplicates)
-
-    df = pd.DataFrame(rawSignals)
-    # save as csv
-    df.to_csv(os.path.join(args.plots_dir, "correlations_rawSignals.csv"), index=False)
-
-    # Normalize to library size
-    dfNorm = df.apply(lambda x: np.log2(1 + (x / x.sum()) * 1000000))
-
     # pick samples pairwisely
-    for sample1, sample2 in itertools.combinations(dfNorm.columns, 2):
-        # pick two samples
-        d = dfNorm[[sample1, sample2]]
+    for sample1, sample2 in itertools.combinations(args.covFiles, 2):
+        name1 = re.sub(os.path.basename(sample1), "\.cov", "")
+        name2 = re.sub(os.path.basename(sample2), "\.cov", "")
+
+        # Read
+        df1 = pd.DataFrame(os.path.abspath(sample1))  
+        df2 = pd.DataFrame(os.path.abspath(sample2))
+
+        # normalize to total size
+        # todo: select column with the actual data (read counts)
+        # df1.apply(lambda x: np.log2(1 + (x / x.sum()) * 1000000))
+        # df2.apply(lambda x: np.log2(1 + (x / x.sum()) * 1000000))
+
         # convert the pandas dataframe to an R dataframe
-        robj.pandas2ri.activate()
-        df_R = robj.conversion.py2ri(d)
+        # robj.pandas2ri.activate()
+        # df_R = robj.conversion.py2ri(d)
         # run the plot function on the dataframe
-        plotFunc(df_R, os.path.join(args.plots_dir, sample1 + "_vs_" + sample2 + ".pdf"))
-
-
-def makeWindows(windowWidth, genome):
-    """Generate 1kb windows genome-wide."""
-    w = BedTool.window_maker(BedTool(), genome=genome, w=windowWidth)
-    windows = dict()
-    for interval in w:
-        feature = HTSeq.GenomicInterval(
-            interval.chrom,
-            interval.start,
-            interval.end
-        )
-        name = string.join(interval.fields, sep="_")
-        windows[name] = feature
-
-    return windows
-
-
-def coverage(bam, intervals, fragmentsize, duplicates=False):
-    """ Gets read coverage in bed regions, returns dict with region:count.
-    bam - Bam object from HTSeq.BAM_Reader.
-    intervals - dict with HTSeq.GenomicInterval objects as values.
-    fragmentsize - integer.
-    duplicates - boolean.
-    """
-    chroms = ['chr1', 'chr2', 'chr3', 'chr4', 'chr5', 'chr6', 'chr7', 'chr8', 'chr9', 'chr10', 'chr11', 'chr12', 'chr13', 'chr14', 'chr15', 'chr16', 'chr17', 'chr18', 'chr19', 'chr20', 'chr21', 'chr22', 'chrX']
-    # Loop through TSSs, get coverage, append to dict
-    cov = dict()
-
-    for name, feature in intervals.iteritems():
-        if feature.chrom not in chroms:
-            continue
-        count = 0
-
-        # Fetch alignments in feature window
-        for aln in bam[feature]:
-            # check if duplicate
-            if not duplicates and aln.pcr_or_optical_duplicate:
-                continue
-
-            # adjust fragment to size
-            aln.iv.length = fragmentsize
-
-            # add +1 to all positions overlapped by read within window
-            count += 1
-
-        # append feature profile to dict
-        cov[name] = count
-    return cov
+        # plotFunc(df_R, os.path.join(args.plots_dir, sample1 + "_vs_" + sample2 + ".pdf"))
 
 
 if __name__ == '__main__':

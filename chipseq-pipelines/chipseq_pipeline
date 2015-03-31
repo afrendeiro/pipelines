@@ -311,6 +311,11 @@ def preprocess(args, logger):
         "mm10": "/fhgfs/groups/lab_bock/arendeiro/share/mm10.chrom.sizes",
         "dr7": "/fhgfs/groups/lab_bock/arendeiro/share/danRer7.chrom.sizes"
     }
+    genomeWindows = {
+        "hg19": "/fhgfs/groups/lab_bock/arendeiro/share/hg19.genomeWindows_10kb.bed",
+        "mm10": "/fhgfs/groups/lab_bock/arendeiro/share/mm10.genomeWindows_10kb.bed",
+        "dr7": "/fhgfs/groups/lab_bock/arendeiro/share/danRer7.genomeWindows_10kb.bed"
+    }
     adapterFasta = "/fhgfs/groups/lab_bock/shared/cm.fa"
 
     # Other static info
@@ -605,6 +610,12 @@ def preprocess(args, logger):
                 trackHubURL="{0}/{1}/bigWig/trackHub_{2}.txt".format(args.url_root, args.project_name, samplesMerged["genome"][sample]),
                 fileName=os.path.join(projectDir, "ucsc_tracks_{0}.html".format(samplesMerged["genome"][sample])),
                 genome=samplesMerged["genome"][sample]
+            )
+        if args.stage in ["all", "coverage"]:
+            jobCode += genomeWideCoverage(
+                inputBam=bam + ".nodups.bam",
+                genomeWindows=genomeWindows[samplesMerged["genome"][sample]],
+                output=os.path.join(dataDir, "coverage", sampleName + ".cov")
             )
 
         # if args.stage in ["all", "qc"]:
@@ -1093,31 +1104,32 @@ def compare(args, logger):
                     jobCode += slurmFooter()
                     jobs[jobName] = jobCode
 
-    # Submit job for all samples together
-    jobName = projectName + "_" + "sample_correlations"
-
+    # Submit job for all samples together (per genome)
     if args.stage in ["all", "correlations"]:
-        # TODO:
         # Submit separate jobs for each genome
-        jobCode = slurmHeader(
-            jobName=jobName,
-            output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
-            queue=args.queue,
-            time=args.time,
-            cpusPerTask=args.cpus,
-            memPerCpu=args.mem,
-            userMail=args.user_mail
-        )
-        jobCode += plotCorrelations(
-            inputBams=list(samples['filePath']),
-            plotsDir=os.path.join(resultsDir, 'plots'),
-            duplicates=args.duplicates,
-            windowWidth=args.genome_window_width,
-            fragmentSize=50,
-            genome="hg19"
-        )
-        jobCode += slurmFooter()
-        jobs[jobName] = jobCode
+        genome_groups = samples.groupby(["genome"]).groups
+
+        for genome in genome_groups.keys():
+            jobName = projectName + "_" + genome + "_sample_correlations"
+
+            # Separate comparison per IPed factor
+            df = samples.ix[genome_groups[genome]]
+
+            jobCode = slurmHeader(
+                jobName=jobName,
+                output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
+                queue=args.queue,
+                time=args.time,
+                cpusPerTask=args.cpus,
+                memPerCpu=args.mem,
+                userMail=args.user_mail
+            )
+            jobCode += plotCorrelations(
+                inputCoverage=[os.path.join(dataDir, "coverage", sampleName + ".cov") for sampleName in list(df['sampleName'])],
+                plotsDir=os.path.join(resultsDir, 'plots')
+            )
+            jobCode += slurmFooter()
+            jobs[jobName] = jobCode
 
     # Submit jobs to slurm
     for jobName, jobCode in jobs.items():
@@ -1407,6 +1419,9 @@ def skewer(inputFastq1, outputPrefix, cpus, adapters, inputFastq2=None):
 
 
 def bowtie2Map(inputFastq1, outputBam, log, genomeIndex, maxInsert, cpus, inputFastq2=None):
+    """
+
+    """
     outputBam = re.sub("\.bam$", "", outputBam)
     # Admits 2000bp-long fragments (--maxins option)
     command = """
@@ -1612,6 +1627,22 @@ def linkToTrackHub(trackHubURL, fileName, genome):
         handle.write(textwrap.dedent(html))
 
 
+def genomeWideCoverage(inputBam, genomeWindows, output):
+    command = """
+    # Calculate genome-wide coverage
+    echo "Calculating genome-wide coverage"
+    module load bedtools
+
+    bedtools coverage -abam -counts \\
+    -a {0} \\
+    -b {1} \\
+    > {2}
+
+    """.format(inputBam, genomeWindows, output)
+
+    return command
+
+
 def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broad=False, plot=True):
     if genome == "hg19":
         genome = "hs"
@@ -1798,30 +1829,19 @@ def footprintAnalysis():
     raise NotImplementedError("Function not implemented yet.")
 
 
-def plotCorrelations(inputBams, plotsDir, duplicates=False,
-                     windowWidth=1000, fragmentSize=50, genome="hg19"):
+def plotCorrelations(inputCoverage, plotsDir):
     command = """
     # Plot correlations
     echo "plotting correlations"
 
-    source ~/venv/bin/activate
-
-    python {5}/lib/correlations.py \\
+    python {2}/lib/correlations.py \\
     {0} \\
-    {1} \\
-    --window-width {2} \\
-    --fragment-size {3} \\
-    --genome {4}
+    {1}
 
-    """.format(plotsDir, " ".join(["%s"] * len(inputBams)) % tuple(inputBams),
-               windowWidth, fragmentSize, genome,
+    """.format(plotsDir, 
+               " ".join(["%s"] * len(inputCoverage)) % tuple(inputCoverage),
                os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
                )
-
-    if duplicates:
-        command += "--duplicates"
-
-    command += "\n    deactivate\n"
 
     return command
 

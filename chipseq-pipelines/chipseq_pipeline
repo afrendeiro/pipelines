@@ -302,7 +302,7 @@ def preprocess(args, logger):
     # Paths to static files on the cluster
     genomeFolder = "/fhgfs/prod/ngs_resources/genomes/"
     genomeIndexes = {
-        "hg19": os.path.join(genomeFolder, "hg19/forBowtie2/withoutRandom/hg19"),
+        "hg19": "/home/arendeiro/reference/Homo_sapiens/forBowtie2/hg19",
         "mm10": os.path.join(genomeFolder, "mm10/forBowtie2/mm10/index_woRandom/mm10"),
         "dr7": os.path.join(genomeFolder, "dr7/forBowtie2/dr7")
     }
@@ -1078,10 +1078,13 @@ def compare(args, logger):
 
                 jobName = projectName + "_" + "diffBind_{0}_{1}".format(genome, IP)
                 diffBindSheetFile = os.path.join(projectDir, "runs", jobName + ".csv")
+                print(diffBindSheetFile)
 
                 # make diffBind csv file, save it
                 empty = makeDiffBindSheet(
-                    samples, samples.ix[IP_groups[IP]], os.path.join(dataDir, "peaks"),
+                    samples,
+                    samples.ix[IP_groups[IP]],
+                    os.path.join(dataDir, "peaks"),
                     diffBindSheetFile
                 )
                 # ^^ returns Bool for empty diffBind sheet
@@ -1208,7 +1211,7 @@ def makeDiffBindSheet(samples, df, peaksDir, sheetFile):
     # TODO:
     # Change peak path according to narrow/broad
     df.loc[:, "Peaks"] = [os.path.join(peaksDir, sampleName, sampleName + "_peaks.narrowPeak") for sampleName in df["sampleName"]]
-    df.loc[:, "PeakCaller"] = "macs"
+    df["PeakCaller"] = "macs"
 
     # Filter columns used
     df = df[["sampleName", "cellLine", "ip", "condition", "treatment",
@@ -1440,7 +1443,8 @@ def bowtie2Map(inputFastq1, outputBam, log, metrics, genomeIndex, maxInsert, cpu
     else:
         command += """--maxins {0} -1 {1} \\
     -2 {2}""".format(maxInsert, inputFastq1, inputFastq2)
-    command += """ 2> {0} | \\
+    command += """\\
+    2> {0} | \\
     samtools view -S -b - | \\
     samtools sort - {1}
 
@@ -1839,7 +1843,7 @@ def plotCorrelations(inputCoverage, plotsDir):
     {0} \\
     {1}
 
-    """.format(plotsDir, 
+    """.format(plotsDir,
                " ".join(["%s"] * len(inputCoverage)) % tuple(inputCoverage),
                os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
                )

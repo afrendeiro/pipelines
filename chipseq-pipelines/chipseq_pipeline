@@ -544,6 +544,7 @@ def preprocess(args, logger):
                 inputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq") if PE else None,
                 outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
                 log=os.path.join(resultsDir, sampleName + ".alnRates.txt"),
+                metrics=os.path.join(resultsDir, sampleName + ".alnMetrics.txt"),
                 genomeIndex=genomeIndexes[samplesMerged["genome"][sample]],
                 maxInsert=args.maxinsert,
                 cpus=args.cpus
@@ -1418,7 +1419,7 @@ def skewer(inputFastq1, outputPrefix, cpus, adapters, inputFastq2=None):
     return command
 
 
-def bowtie2Map(inputFastq1, outputBam, log, genomeIndex, maxInsert, cpus, inputFastq2=None):
+def bowtie2Map(inputFastq1, outputBam, log, metrics, genomeIndex, maxInsert, cpus, inputFastq2=None):
     """
 
     """
@@ -1433,17 +1434,17 @@ def bowtie2Map(inputFastq1, outputBam, log, genomeIndex, maxInsert, cpus, inputF
     bowtie2 --very-sensitive -p {0} \\
     -x {1} \\
     --met-file {2} \\
-    """.format(cpus, genomeIndex, log)
+    """.format(cpus, genomeIndex, metrics)
     if inputFastq2 is None:
         command += "{0} ".format(inputFastq1)
     else:
         command += """--maxins {0} -1 {1} \\
     -2 {2}""".format(maxInsert, inputFastq1, inputFastq2)
-    command += """ | \\
+    command += """ 2> {0} | \\
     samtools view -S -b - | \\
-    samtools sort - {0}
+    samtools sort - {1}
 
-    """.format(outputBam)
+    """.format(log, outputBam)
 
     return command
 

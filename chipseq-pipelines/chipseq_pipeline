@@ -698,6 +698,10 @@ def readStats(args, logger):
     variables = ["cellLine", "numberCells", "technique", "ip", "patient",
                  "treatment", "biologicalReplicate", "technicalReplicate", "genome"]
 
+    cols = ["readCount", "unpaired", "unaligned", "unique", "multiple", "alignmentRate"]
+    for col in cols:
+        samples[col] = None
+
     cols = ["unpairedReadsExamined", "readPairsExamined", "unmappedReads", "unpairedReadDuplicates",
             "readPairDuplicates", "readPairOpticalDuplicates", "percentDuplication", "estimatedLibrarySize"]
     samples["totalReads"] = None
@@ -722,7 +726,7 @@ def readStats(args, logger):
             # get stats into a series
             alnStats = parseBowtieStats(os.path.join(resultsDir, sampleName + ".alnRates.txt"))
             # add to dataFrame
-            df = df.loc[sample, alnStats.index.tolist()] = alnStats
+            samples.loc[sample, alnStats.index.tolist()] = alnStats
         except:
             logger.warn("Record with alignment rates is empty or not found for sample %s" % sampleName)
             pass
@@ -733,7 +737,7 @@ def readStats(args, logger):
                 os.path.join(resultsDir, sampleName + ".duplicates.txt"),
                 sep="\t",
                 comment="#",
-                header=1
+                header=0
             )
             # drop if empty
             dups.dropna(thresh=len(dups.columns) - 1, inplace=True)
@@ -745,6 +749,14 @@ def readStats(args, logger):
             logger.warn("Record with duplicates is empty or not found for sample %s" % sampleName)
             pass
 
+        # Count peak number (if peaks in sheet)
+        if "peakFile" in samples.columns:
+            # and if sample has peaks
+            if str(samples["peakFile"][sample]) != "nan":
+                proc = subprocess.Popen(["wc", "-l", samples["peakFile"][sample]], stdout=subprocess.PIPE)
+                out, err = proc.communicate()
+                samples.loc[sample, "peakNumber"] = re.sub("\D.*", "", out)
+
         # Get FRiP from file (if exists) and add to sheet
         if "peakFile" in samples.columns:
             # if sample has peaks
@@ -753,7 +765,7 @@ def readStats(args, logger):
                     with open(os.path.join(resultsDir, sampleName + "_FRiP.txt"), "r") as handle:
                         content = handle.readlines()
 
-                    readsInPeaks = re.sub("\D", "", content)
+                    readsInPeaks = int(re.sub("\D", "", content[0]))
                     mappedReads = samples["readCount"][sample] - samples["unaligned"][sample]
 
                     samples.loc[sample, "FRiP"] = readsInPeaks / mappedReads

@@ -52,10 +52,10 @@ def main():
                         Default=http://www.biomedical-sequencing.at/bocklab.""")
     parser.add_argument("--keep-tmp-files", dest="keep_tmp", action="store_true",
                         help="Keep intermediary files. If not it will only preserve final files. Default=False.")
-    parser.add_argument("-c", "--cpus", default=16, dest="cpus",
-                        help="Number of CPUs to use. Default=16.", type=int)
-    parser.add_argument("-m", "--mem-per-cpu", default=2000, dest="mem",
-                        help="Memory per CPU to use. Default=2000.", type=int)
+    parser.add_argument("-c", "--cpus", default=4, dest="cpus",
+                        help="Number of CPUs to use. Default=4.", type=int)
+    parser.add_argument("-m", "--mem-per-cpu", default=4000, dest="mem",
+                        help="Memory per CPU to use. Default=4000.", type=int)
     parser.add_argument("-q", "--queue", default="shortq", dest="queue",
                         choices=["develop", "shortq", "mediumq", "longq"],
                         help="Queue to submit jobs to. Default=shortq", type=str)
@@ -79,13 +79,16 @@ def main():
     preprocess_subparser.add_argument("-s", "--stage", default="all", dest="stage",
                                       choices=["all", "bam2fastq", "fastqc", "trim", "mapping",
                                                "shiftreads", "markduplicates", "removeduplicates",
-                                               "indexbam", "qc", "maketracks"],
+                                               "indexbam", "qc", "maketracks", "coverage"],
                                       help="Run only these stages. Default=all.", type=str)
     preprocess_subparser.add_argument("--trimmer", default="skewer", choices=["trimmomatic", "skewer"],
                                       dest="trimmer", help="Trimmer to use. Default=skewer.", type=str)
     preprocess_subparser.add_argument("-i", "--max-insert-size", default=2000,
                                       dest="maxinsert",
                                       help="Maximum allowed insert size allowed for paired end mates. Default=2000.",
+                                      type=int)
+    preprocess_subparser.add_argument("--window-size", default=1000, dest="windowsize",
+                                      help="Window size used for genome-wide correlations. Default=1000.",
                                       type=int)
 
     # stats
@@ -312,9 +315,9 @@ def preprocess(args, logger):
         "dr7": "/fhgfs/groups/lab_bock/arendeiro/share/danRer7.chrom.sizes"
     }
     genomeWindows = {
-        "hg19": "/fhgfs/groups/lab_bock/arendeiro/share/hg19.genomeWindows_10kb.bed",
-        "mm10": "/fhgfs/groups/lab_bock/arendeiro/share/mm10.genomeWindows_10kb.bed",
-        "dr7": "/fhgfs/groups/lab_bock/arendeiro/share/danRer7.genomeWindows_10kb.bed"
+        "hg19": "/fhgfs/groups/lab_bock/arendeiro/share/hg19.genomeWindows_1kb.bed",
+        "mm10": "/fhgfs/groups/lab_bock/arendeiro/share/mm10.genomeWindows_1kb.bed",
+        "dr7": "/fhgfs/groups/lab_bock/arendeiro/share/danRer7.genomeWindows_1kb.bed"
     }
     adapterFasta = "/fhgfs/groups/lab_bock/shared/cm.fa"
 
@@ -669,6 +672,34 @@ def preprocess(args, logger):
             os.path.join(projectDir, "runs", args.project_name + ".log"))
 
 
+def parseBowtieStats(statsFile):
+    """
+    Parses Bowtie2 stats file, returns series with values.
+    """
+    stats = pd.Series(index=["readCount", "unpaired", "unaligned", "unique", "multiple", "alignmentRate"])
+
+    with open(statsFile) as handle:
+        content = handle.readlines()  # list of strings per line
+
+    # total reads
+    try:
+        line = [i for i in range(len(content)) if " reads; of these:" in content[i]][0]
+        stats["readCount"] = re.sub("\D.*", "", content[line])
+        line = [i for i in range(len(content)) if "were unpaired; of these:" in content[i]][0]
+        stats["unpaired"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if "aligned 0 times" in content[i]][0]
+        stats["unaligned"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if "aligned exactly 1 time" in content[i]][0]
+        stats["unique"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if "aligned >1 times" in content[i]][0]
+        stats["multiple"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if "overall alignment rate" in content[i]][0]
+        stats["alignmentRate"] = re.sub("\D.*", "", content[line])
+    except IndexError:
+        pass
+    return stats
+
+
 def readStats(args, logger):
     """
     Given an annotation sheet with replicates, gets number of reads mapped, duplicates, etc...
@@ -701,6 +732,7 @@ def readStats(args, logger):
 
     if "peakFile" in samples.columns:
         samples["peakNumber"] = None
+        samples["FRiP"] = None
 
     for sample in xrange(len(samples)):
         # Sample name
@@ -713,13 +745,10 @@ def readStats(args, logger):
 
         # Get alignment stats
         try:
-            # read in
-            reads = pd.read_csv(
-                os.path.join(resultsDir, sampleName + ".alnRates.txt"),
-                sep="\t"
-            )
+            # get stats into a series
+            alnStats = parseBowtieStats(os.path.join(resultsDir, sampleName + ".alnRates.txt"))
             # add to dataFrame
-            samples.loc[sample, "totalReads"] = reads.loc[0, 'Read']
+            df = df.loc[sample, alnStats.index.tolist()] = alnStats
         except:
             logger.warn("Record with duplicates is empty or not found for sample %s" % sampleName)
             pass
@@ -749,6 +778,22 @@ def readStats(args, logger):
                 proc = subprocess.Popen(["wc", "-l", samples["peakFile"][sample]], stdout=subprocess.PIPE)
                 out, err = proc.communicate()
                 samples.loc[sample, "peakNumber"] = re.sub("\D.*", "", out)
+
+        # Compute FRiP
+        if "peakFile" in samples.columns:
+            # and if sample has peaks
+            if str(samples["peakFile"][sample]) != "nan":
+                cmd = "cut -f 1,2,3 {0} ".format(samples["peakFile"][sample])
+                cmd += "| bedtools coverage -counts "
+                cmd += "-abam {0} ".format(samples["filePath"][sample])
+                cmd += "-b - "
+                cmd += "| awk '{sum+=$4} END {print sum}'"
+                proc = subprocess.Popen(textwrap.dedent(cmd), stdout=subprocess.PIPE, shell=True)
+                out, err = proc.communicate()
+                readsInPeaks = re.sub("\D.*", "", out)
+                mappedReads = samples["readCount"][sample] - samples["unaligned"][sample]
+
+                samples.loc[sample, "FRiP"] = readsInPeaks / mappedReads
 
     # convert duplicates to percentage
     samples.loc[:, 'percentDuplication'] = samples['percentDuplication'] * 100
@@ -1696,7 +1741,7 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broa
 
     """.format(treatmentBam, controlBam, genome, sampleName, outputDir)
 
-    if plot:
+    if plot and not broad:
         command += """
     # Plot MACS2 crosscorrelation
 

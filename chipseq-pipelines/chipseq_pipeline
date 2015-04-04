@@ -171,6 +171,30 @@ def main():
 
     sys.exit(1)
 
+"""
+Workflow explained:
+    - Project is created
+    - Sample sheet is created and added to project (spawns next)
+        - Samples are created and added to project (automatically)
+
+    In the process, stuff is checked:
+        - project structure (created if not existing)
+        - existance of csv sample sheet
+        - existance of bam files from samples
+
+    Working example:
+        prj = Project("ngs", parent="/home/afr/", parenthtml="/home/afr/")
+        sheet = SampleSheet("/home/afr/workspace/chipmentation/chipmentation.sample_annotation.csv", prj)
+        # that's it!
+
+        # explore!
+        prj.samples
+        prj.samples[0].peakFile
+
+        prj.dirs.results
+        prj.sheet.to_csv(os.path.join(prj.dirs.root, "sample_annotation.csv"))
+"""
+
 
 class Paths(object):
     """
@@ -182,32 +206,56 @@ class Paths(object):
 class Project(object):
     """
     A class to model a Project.
+
+    Required kwargs:
+        parent : str - a path to where the project structure will be created.
+        parenthtml : str - a path to where the project structure will be created.
+
+    Example:
+        prj = Project("ngs", parent="/projects", parenthtml="/public_html")
     """
-    def __init__(self, name, args):
+    def __init__(self, name, **kwargs):
         super(Project, self).__init__()
+        # check it's a string
         self.name = name
-        self.setProjectDirs(args)
+
+        # Path structure
+        self.dirs = Paths()
+        # parse kwargs
+        # This will in the future be read from the config!
+        for key in ('parent', 'parenthtml'):
+            if key in kwargs:
+                # check they're strings
+                setattr(self.dirs, key, kwargs[key])
+            else:
+                raise ValueError("Project initialization requires the two kwargs")
+
+        # flow
+        self.setProjectDirs()
         self.makeProjectDirs()
         self.setProjectPermissions()
 
-    def setProjectDirs(self, args):
-        # Paths and paths
-        self.dirs = Paths()
+        # samples
+        self.samples = list()
 
-        # check args.project_root exists and user has write access
-        self.dirs.parent = os.path.abspath(args.project_root)
-        if not os.access(args.project_root, os.W_OK):
+    def setProjectDirs(self):
+        # check self.project_root exists and user has write access
+        self.dirs.parent = os.path.abspath(self.dirs.parent)
+        if not os.access(self.dirs.parent, os.W_OK):
             raise IOError("%s does not exist, or user has no write access.\n\
-            Use option '-r' '--project-root' to set a non-default project root path." % args.project_root)
+            Use option '-r' '--project-root' to set a non-default project root path." % self.dirs.parent)
 
-        # check args.html_root exists and user has write access
-        self.dirs.parentHtml = os.path.abspath(args.html_root)
-        if not os.access(self.dirs.parentHtml, os.W_OK):
+        # check self.html_root exists and user has write access
+        self.dirs.parenthtml = os.path.abspath(self.dirs.parenthtml)
+        if not os.access(self.dirs.parenthtml, os.W_OK):
             raise IOError("%s does not exist, or user has no write access.\n\
-            Use option '--html-root' to set a non-default html root path." % self.dirs.parentHtml)
+            Use option '--html-root' to set a non-default html root path." % self.dirs.parenthtml)
 
-        # project directory structure
+        # Project directory structure
         self.dirs.root = os.path.join(self.dirs.parent, self.name)
+        # Runs
+        self.dirs.runs = os.path.join(self.dirs.root, "runs")
+        # Data
         self.dirs.data = os.path.join(self.dirs.root, "data")
         self.dirs.fastq = os.path.join(self.dirs.data, "fastq")
         self.dirs.fastqc = os.path.join(self.dirs.data, "fastqc")
@@ -216,16 +264,18 @@ class Project(object):
         self.dirs.coverage = os.path.join(self.dirs.data, "coverage")
         self.dirs.peaks = os.path.join(self.dirs.data, "peaks")
         self.dirs.motifs = os.path.join(self.dirs.data, "motifs")
+        # Results
         self.dirs.results = os.path.join(self.dirs.root, "results")
-        self.dirs.plots = os.path.join(self.dirs.root, "plots")
-        self.dirs.html = os.path.join(self.dirs.parentHtml, "html")
+        self.dirs.plots = os.path.join(self.dirs.results, "plots")
+        # Html structure
+        self.dirs.html = os.path.join(self.dirs.parenthtml, self.name)
         self.dirs.bigwig = os.path.join(self.dirs.html, "bigwig")
 
     def makeProjectDirs(self):
         """
         Creates project directories if they don't exist.
         """
-        for name, path in self.dirs.items():
+        for name, path in self.dirs.__dict__.items():
             if not os.path.exists(path):
                 os.makedirs(path)
 
@@ -233,61 +283,157 @@ class Project(object):
         """
         Makes public_html folder executable.
         """
-        for d in [self.dirs.parentHtml, self.dirs.html, self.dirs.bigwig]:
+        for d in [self.dirs.parenthtml, self.dirs.html, self.dirs.bigwig]:
             try:
                 os.chmod(d, 0755)
             except OSError:
                 # logger.error("cannot change folder's mode: %s" % d)
                 continue
 
+    def addSample(self, sample):
+        """
+        Adds a sample to self.samples.
+        """
+        # Todo: check sample is Sample object
+        # Tie sample and project bilateraly
+        sample.project = self
+        # Append
+        self.samples.append(sample)
 
-class Sample(object):
-    """Class to model Samples"""
+
+class SampleSheet(object):
+    """
+    Class to model a sample annotation sheet.
+    """
+    def __init__(self, csv, project):
+        super(SampleSheet, self).__init__()
+        # TODO: checks on given args
+        self.csv = csv
+        # pair project and sheet
+        self.project = project
+        self.project.sheet = self
+
+        self.samples = list()
+        self._columns = ["cellLine", "numberCells", "technique", "ip", "patient",
+                         "treatment", "biologicalReplicate", "technicalReplicate", "filePath", "genome"]
+        self.checkSheet()
+
+        # Generate sample objects from annotation sheet
+        # and add them to project
+        self.getSamples()
+        self.getMergedReplicates()
+        self.addSamplesToProject()
+
+    def checkSheet(self):
+        """
+        Check if csv file has all required columns.
+        """
+        self.sheet = pd.read_csv(self.csv)
+        missing = [col for col in self._columns if col not in self.sheet.columns]
+        if len(missing) != 0:
+            raise TypeError("Annotation sheet is missing columns: %s" % " ".join(missing))
+
+    def getSamples(self):
+        """
+        Creates samples from annotation sheet and adds the samples to project.
+        """
+        for sample in range(len(self.sheet)):
+            self.samples.append(Sample(self.sheet.ix[sample]))
+
+    def getMergedReplicates(self):
+        """
+        Returns biological replicates (merged technical replicates) samples
+        and merged biological replicates samples.
+        """
+        # copy columns list
+        attributes = self._columns[:]
+        # ignore some fields in the annotation sheet
+        attributes.pop(self._columns.index("filePath"))
+
+        # get technical replicates -> biological replicates
+        attributes.pop(self._columns.index("technicalReplicate"))
+
+        for key, values in self.sheet.groupby(attributes).groups.items():
+            rep = self.sheet.ix[values][attributes].reset_index(drop=True).ix[0]
+            if len(values) > 1:
+                rep["technicalReplicate"] = 0
+                rep["filePath"] = self.sheet.ix[values]["filePath"].tolist()
+                # append biological replicate to samples
+                self.samples.append(Sample(rep))
+
+        # get biological replicates -> merged biological replicates
+        attributes.pop(self._columns.index("biologicalReplicate"))
+
+        for key, values in self.sheet.groupby(attributes).groups.items():
+            rep = self.sheet.ix[values][attributes].reset_index(drop=True).ix[0]
+            if len(values) > 1:
+                # check samples in group are from different biological replicates
+                if len(self.sheet.ix[self.sheet.groupby(attributes).groups[key]]['biologicalReplicate'].unique()) > 1:
+                    rep["biologicalReplicate"] = 0
+                    rep["technicalReplicate"] = 0
+                    rep["filePath"] = self.sheet.ix[values]["filePath"].tolist()
+                    # append merged biological replicate to samples
+                    self.samples.append(Sample(rep))
+
+    def addSamplesToProject(self):
+        """
+        Adds its samples to its project.
+        """
+        for sample in self.samples:
+            self.project.addSample(sample)
+
+    def to_csv(self, path):
+        """
+        Saves a csv annotation sheet from the samples.
+        """
+        df = pd.DataFrame(self.samples)
+        df = df[["sampleName"] + self._columns]
+        df.to_csv(path, index=False)
+
+
+class Sample(pd.Series):
+    """Class to model Samples basd on a pandas Series."""
     def __init__(self, series):
-        super(Sample, self).__init__()
-
-        # Add attributes from series
-        self.cellLine = series.cellLine
-        self.numberCells = series.numberCells
-        self.technique = series.technique
-        self.ip = series.ip
-        self.patient = series.patient
-        self.treatment = series.treatment
-        self.biologicalReplicate = series.biologicalReplicate
-        self.technicalReplicate = series.technicalReplicate
-        self.unmappedBam = series.filePath
-        self.genome = series.genome
+        # Use pd.Series object to have all sample attributes
+        if not isinstance(series, pd.Series):
+            raise TypeError("Provided object is not a pandas Series.")
+        super(Sample, self).__init__(series)
 
         self.checkNotEmpty()
         self.generateName()
 
         # check if sample is to be analysed with cuts
-        self.tagmented = True if self.technique in ["DNASE", "DNASESEQ", "DNASE-SEQ", "DHS", "DHS-SEQ", "DHSSEQ", "ATAC", "ATAC-SEQ", "ATACSEQ", "CM"] else False
+        # self.tagmented = True if self.technique in ["DNASE", "DNASESEQ", "DNASE-SEQ", "DHS", "DHS-SEQ", "DHSSEQ", "ATAC", "ATAC-SEQ", "ATACSEQ", "CM"] else False
 
-        self.getReadType()
-        self.setFilePaths()
-
-        # todo: put in config
-
-        self.getTrackColour()
+        # self.getReadType()
+        # self.setFilePaths()
+        # self.getTrackColour()
 
     def checkNotEmpty(self):
         """
         Check if any important attribute is None.
         """
-        if any([self.genome, str(self.biologicalReplicate), str(self.technicalReplicate), self.unmappedBam] == "nan"):
-            raise ValueError("Values for sample are empty.")
+        req = ["genome", "biologicalReplicate", "technicalReplicate", "filePath"]
+
+        if not all([hasattr(self, attr) for attr in req]):
+            raise ValueError("Required columns for sample do not exist.")
+
+        if any([attr == "nan" for attr in req]):
+            raise ValueError("Required values for sample are empty.")
 
     def generateName(self):
         """
-        Generates a name for the sample by concatenation of some of its attributes.
+        Generates a name for the sample by joining some of its attribute strings.
         """
-        self.name = string.join(
-            self.cellLine, self.numberCells, self.technique,
-            self.ip, self.patient, self.treatment,
-            str(self.biologicalReplicate), str(self.technicalReplicate),
-            self.genome, sep="_"
+        self.name = "_".join(
+            str(x) for x in [
+                self.cellLine, self.numberCells, self.technique,
+                self.ip, self.patient, self.treatment,
+                self.biologicalReplicate, self.technicalReplicate,
+                self.genome
+            ]
         )
+        self.sampleName = self.name
 
     def asSeries(self):
         """
@@ -338,31 +484,33 @@ class Sample(object):
         """
         self.fastqc = self.project.dirs.fastqc
 
+        fastq = os.path.join(self.project.dirs.fastq, self.name)
         if self.readType == "SE":
-            self.fastq = os.path.join(self.project.dirs.fastq, self.name + ".fastq")
+            self.fastq = fastq + ".fastq"
         else:
-            self.fastq1 = os.path.join(self.project.dirs.fastq, self.name + ".1.fastq")
-            self.fastq2 = os.path.join(self.project.dirs.fastq, self.name + ".2.fastq")
-            self.fastqUnpaired = os.path.join(self.project.dirs.fastq, self.name + ".unpaired.fastq")
+            self.fastq1 = fastq + ".1.fastq"
+            self.fastq2 = fastq + ".2.fastq"
+            self.fastqUnpaired = fastq + ".unpaired.fastq"
 
         if self.readType == "SE":
-            self.trimmed = os.path.join(self.project.dirs.fastq, self.name + ".trimmed.fastq")
+            self.trimmed = fastq + ".trimmed.fastq"
         else:
-            self.trimmed1 = os.path.join(self.project.dirs.fastq, self.name + ".1.trimmed.fastq")
-            self.trimmed2 = os.path.join(self.project.dirs.fastq, self.name + ".2.trimmed.fastq")
-            self.trimmed1Unpaired = os.path.join(self.project.dirs.fastq, self.name + ".1_unpaired.trimmed.fastq")
-            self.trimmed2Unpaired = os.path.join(self.project.dirs.fastq, self.name + ".2_unpaired.trimmed.fastq")
+            self.trimmed1 = fastq + ".1.trimmed.fastq"
+            self.trimmed2 = fastq + ".2.trimmed.fastq"
+            self.trimmed1Unpaired = fastq + ".1_unpaired.trimmed.fastq"
+            self.trimmed2Unpaired = fastq + ".2_unpaired.trimmed.fastq"
 
-        self.mapped = os.path.join(self.project.dirs.mapped, self.name + ".trimmed.bowtie2.bam")
+        mapped = os.path.join(self.project.dirs.mapped, self.name)
+        self.mapped = mapped + ".trimmed.bowtie2.bam"
         self.alnRates = os.path.join(self.project.dirs.results, self.name + ".alnRates.txt")
 
         if not self.tagmented:
-            self.dups = os.path.join(self.project.dirs.mapped, self.name + ".trimmed.bowtie2.dups.bam")
-            self.nodups = os.path.join(self.project.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.bam")
+            self.dups = mapped + ".trimmed.bowtie2.dups.bam"
+            self.nodups = mapped + ".trimmed.bowtie2.nodups.bam"
         else:
-            self.shifted = os.path.join(self.project.dirs.mapped, self.name + ".trimmed.bowtie2.shifted.bam")
-            self.dups = os.path.join(self.project.dirs.mapped, self.name + ".trimmed.bowtie2.shifted.dups.bam")
-            self.nodups = os.path.join(self.project.dirs.mapped, self.name + ".trimmed.bowtie2.shifted.nodups.bam")
+            self.shifted = mapped + ".trimmed.bowtie2.shifted.bam"
+            self.dups = mapped + ".trimmed.bowtie2.shifted.dups.bam"
+            self.nodups = mapped + ".trimmed.bowtie2.shifted.nodups.bam"
 
         self.dupsMetrics = os.path.join(self.dirs.results, self.name + ".duplicates.txt")
 
@@ -383,76 +531,6 @@ class Sample(object):
                 self.trackColour = self.config.trackColours["DNASE"]
             else:
                 self.trackColour = random.sample(self.colourGradient, 1)[0]  # pick one randomly
-
-
-class SampleSheet(object):
-    """
-    Class to model a sample annotation sheet.
-    """
-    def __init__(self, csv):
-        super(SampleSheet, self).__init__()
-        self.csv = csv
-        self.samples = list()
-        self.columns = ["cellLine", "numberCells", "technique", "ip", "patient",
-                        "treatment", "biologicalReplicate", "technicalReplicate", "filePath" "genome"]
-        self.checkSheet()
-        self.getSamples()
-        self.getMergedReplicates()
-
-    def checkSheet(self):
-        """
-        Check if csv file has all required columns.
-        """
-        self.sheet = pd.read_csv(self.csv)
-        if not all([True if col in self.columns else False for col in self.sheet.columns]):
-            raise TypeError("Annotation sheet is missing columns")
-
-    def getSamples(self):
-        """
-        Creates samples from annotation sheet.
-        """
-        for sample in range(len(self.sheet)):
-            self.samples.append(Sample(self.sheet.ix[sample]))
-
-    def getMergedReplicates(self):
-        """
-        Returns biological replicates (merged technical replicates) samples
-        and merged biological replicates samples.
-        """
-        # ignore some fields in the annotation sheet
-        attributes = self.columns[:].pop(self.columns.index("filePath"))
-
-        # get technical replicates -> biological replicates
-        attributes = attributes.pop(self.columns.index("technicalReplicate"))
-
-        for key, values in self.sheet.groupby(attributes).groups.items():
-            rep = self.sheet.ix[values][attributes].reset_index(drop=True).ix[0]
-            if len(values) > 1:
-                rep["technicalReplicate"] = 0
-                rep["filePath"] = self.sheet.ix[values]["filePath"].tolist()
-                # append biological replicate to samples
-                self.samples.append(Sample(rep))
-
-        # get biological replicates -> merged biological replicates
-        attributes = attributes.pop(self.columns.index("biologicalReplicate"))
-
-        for key, values in self.sheet.groupby(attributes).groups.items():
-            rep = self.sheet.ix[values][attributes].reset_index(drop=True).ix[0]
-            if len(values) > 1:
-                # check samples in group are from different biological replicates
-                if len(self.sheet.ix[self.sheet.groupby(attributes).groups[key]]['biologicalReplicate'].unique()) > 1:
-                    rep["biologicalReplicate"] = 0
-                    rep["technicalReplicate"] = 0
-                    rep["filePath"] = self.sheet.ix[values]["filePath"].tolist()
-                    # append biological replicate to sample annotation
-                    self.samples.append(Sample(rep))
-
-    def writeAnnotationSheet(self, path):
-        """
-        Saves a csv annotation sheet from the samples.
-        """
-        df = pd.DataFrame([sample.asSeries() for sample in self.samples])
-        df.to_csv(path, index=False)
 
 
 def preprocess(args, logger):

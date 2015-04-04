@@ -711,6 +711,8 @@ def readStats(args, logger):
     if "peakFile" in samples.columns:
         samples["peakNumber"] = None
         samples["FRiP"] = None
+        samples["NSC"] = None
+        samples["RSC"] = None
 
     for sample in xrange(len(samples)):
         # Sample name
@@ -784,21 +786,20 @@ def readStats(args, logger):
                     """
                     stats = parseMACSModel(os.path.join(dataDir, "peaks", sampleName, sampleName + "_model.r"))
 
-                    readLength = samples["readLength"][sample]
+                    readLength = int(samples["readLength"][sample])
 
                     # As defined in Landt, et al. 2012 Genome Research:
-                    NSC = max(stats["altd"]) / min(stats["ycorr"])
+                    NSC = abs(max(stats["altd"]) / min(stats["ycorr"]))
                     # macs outputs cross-correlation values (cc) from -405 to 405bp, so to get cc(readLength) I do [405 + readLength]
-                    RSC = (max(stats["altd"]) - min(stats["ycorr"])) / (stats["ycorr"][405 + readLength] - min(stats["ycorr"]))
+                    RSC = abs((max(stats["altd"]) - min(stats["ycorr"])) / (stats["ycorr"][405 + readLength] - min(stats["ycorr"])))
 
                     samples.loc[sample, "NSC"] = NSC
                     samples.loc[sample, "RSC"] = RSC
-
                 except:
                     logger.warn("Record with MACS model couldn't be parsed for sample %s" % sampleName)
                     pass
 
-    # convert duplicates to percentage
+    # convert duplicate rate to percentage
     samples.loc[:, 'percentDuplication'] = samples['percentDuplication'] * 100
 
     # write annotation sheet with biological replicates

@@ -1551,7 +1551,7 @@ def bowtie2Map(inputFastq1, outputBam, log, metrics, genomeIndex, maxInsert, cpu
         command += "{0} ".format(inputFastq1)
     else:
         command += """--maxins {0} -1 {1} \\
-    -2 {2}""".format(maxInsert, inputFastq1, inputFastq2)
+    -2 {2} """.format(maxInsert, inputFastq1, inputFastq2)
     command += """\\
     2> {0} | \\
     samtools view -S -b - | \\

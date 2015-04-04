@@ -774,9 +774,29 @@ def readStats(args, logger):
                     logger.warn("Record with FRiP value is empty or not found for sample %s" % sampleName)
                     pass
 
-        # Compute NSC
+        # Compute NSC and RSC
+        if "peakFile" in samples.columns:
+            # if sample has peaks
+            if str(samples["peakFile"][sample]) != "nan":
+                try:
+                    """
+                    This will only be performed for samples with narrowPeaks due to no model building on broad peaks.
+                    """
+                    stats = parseMACSModel(os.path.join(dataDir, "peaks", sampleName, sampleName + "_model.r"))
 
-        # Compute RSC
+                    readLength = samples["readLength"][sample]
+
+                    # As defined in Landt, et al. 2012 Genome Research:
+                    NSC = max(stats["altd"]) / min(stats["ycorr"])
+                    # macs outputs cross-correlation values (cc) from -405 to 405bp, so to get cc(readLength) I do [405 + readLength]
+                    RSC = (max(stats["altd"]) - min(stats["ycorr"])) / (stats["ycorr"][405 + readLength] - min(stats["ycorr"]))
+
+                    samples.loc[sample, "NSC"] = NSC
+                    samples.loc[sample, "RSC"] = RSC
+
+                except:
+                    logger.warn("Record with MACS model couldn't be parsed for sample %s" % sampleName)
+                    pass
 
     # convert duplicates to percentage
     samples.loc[:, 'percentDuplication'] = samples['percentDuplication'] * 100
@@ -1250,6 +1270,32 @@ def parseBowtieStats(statsFile):
     except IndexError:
         pass
     return stats
+
+
+def parseMACSModel(modelFile):
+    """
+    Parses Bowtie2 stats file, returns series with values.
+    """
+    out = dict()
+
+    with open(modelFile) as handle:
+        content = handle.readlines()  # list of strings per line
+
+    try:
+        patt = re.compile("\((.+)\)")
+        line = [i for i in range(len(content)) if "p <- c(" in content[i]][0]
+        out["p"] = [float(i) for i in patt.search(content[line]).group(1).split(",")]
+        line = [i for i in range(len(content)) if "m <- c(" in content[i]][0]
+        out["m"] = [float(i) for i in patt.search(content[line]).group(1).split(",")]
+        line = [i for i in range(len(content)) if "ycorr <- c(" in content[i]][0]
+        out["ycorr"] = [float(i) for i in patt.search(content[line]).group(1).split(",")]
+        line = [i for i in range(len(content)) if "xcorr <- c(" in content[i]][0]
+        out["xcorr"] = [float(i) for i in patt.search(content[line]).group(1).split(",")]
+        line = [i for i in range(len(content)) if "altd  <- c(" in content[i]][0]
+        out["altd"] = [float(i) for i in patt.search(content[line]).group(1).split(",")]
+    except IndexError:
+        pass
+    return out
 
 
 def makeDiffBindSheet(samples, df, peaksDir, sheetFile):

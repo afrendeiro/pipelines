@@ -623,12 +623,12 @@ def preprocess(args, logger):
                 genomeWindows=genomeWindows[samplesMerged["genome"][sample]],
                 output=os.path.join(dataDir, "coverage", sampleName + ".cov")
             )
-
-        # if args.stage in ["all", "qc"]:
-        #     if tagmented:
-        #         jobCode += qc()
-        #     else:
-        #         jobCode += qc()
+        if args.stage in ["all", "qc"]:
+            jobCode += peakTools(
+                inputBam=bam + ".nodups.bam",
+                output=os.path.join(resultsDir, "sample_QC.tsv"),
+                plot=os.path.join(resultsDir, sampleName + "_QC.pdf"),
+            )
 
         # Remove intermediary files
         if args.stage == "all" and not args.keep_tmp:
@@ -1634,6 +1634,23 @@ def indexBam(inputBam):
     samtools index {0}
 
     """.format(inputBam)
+
+    return command
+
+
+def peakTools(inputBam, output, plot):
+    command = """
+    # Get sample QC metrics
+    echo "Getting sample QC metrics"
+
+    module load boost/1.57
+    module load gcc/4.8.2
+    module load openmpi/gcc/64/1.8.1
+
+    run_spp.R -rf -savp -savp={2} -s=-200:5:800 \\
+    -c={0} -out={1}
+
+    """.format(inputBam, output, plot)
 
     return command
 

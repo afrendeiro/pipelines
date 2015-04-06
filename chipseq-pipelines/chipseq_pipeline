@@ -79,7 +79,7 @@ def main():
     preprocess_subparser.add_argument("-s", "--stage", default="all", dest="stage",
                                       choices=["all", "bam2fastq", "fastqc", "trim", "mapping",
                                                "shiftreads", "markduplicates", "removeduplicates",
-                                               "indexbam", "qc", "maketracks", "coverage"],
+                                               "indexbam", "maketracks", "coverage"],
                                       help="Run only these stages. Default=all.", type=str)
     preprocess_subparser.add_argument("--trimmer", default="skewer", choices=["trimmomatic", "skewer"],
                                       dest="trimmer", help="Trimmer to use. Default=skewer.", type=str)
@@ -101,7 +101,7 @@ def main():
     analyse_subparser.add_argument(dest="project_name", help="Project name.", type=str)
     analyse_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
     analyse_subparser.add_argument("-s", "--stage", default="all", dest="stage",
-                                   choices=["all", "callpeaks", "findmotifs", "centerpeaks",
+                                   choices=["all", "qc", "callpeaks", "findmotifs", "centerpeaks",
                                             "annotatepeaks", "peakanalysis", "tssanalysis", "footprints", "frip"],
                                    help="Run only these stages. Default=all.", type=str)
     analyse_subparser.add_argument("--peak-caller", default="macs2", choices=["macs2", "spp"],
@@ -623,12 +623,6 @@ def preprocess(args, logger):
                 genomeWindows=genomeWindows[samplesMerged["genome"][sample]],
                 output=os.path.join(dataDir, "coverage", sampleName + ".cov")
             )
-        if args.stage in ["all", "qc"]:
-            jobCode += peakTools(
-                inputBam=bam + ".nodups.bam",
-                output=os.path.join(resultsDir, "sample_QC.tsv"),
-                plot=os.path.join(resultsDir, sampleName + "_QC.pdf"),
-            )
 
         # Remove intermediary files
         if args.stage == "all" and not args.keep_tmp:
@@ -709,10 +703,10 @@ def readStats(args, logger):
         samples[col] = None
 
     if "peakFile" in samples.columns:
-        samples["peakNumber"] = None
-        samples["FRiP"] = None
         samples["NSC"] = None
         samples["RSC"] = None
+        samples["peakNumber"] = None
+        samples["FRiP"] = None
 
     for sample in xrange(len(samples)):
         # Sample name
@@ -751,6 +745,13 @@ def readStats(args, logger):
             logger.warn("Record with duplicates is empty or not found for sample %s" % sampleName)
             pass
 
+        # Get NSC and RSC
+        qcFile = os.path.join(resultsDir, "sample_QC.tsv")
+        qc = parseQC(sampleName, qcFile)
+        samples.loc[sample, "NSC"] = qc["NSC"]
+        samples.loc[sample, "RSC"] = qc["RSC"]
+        samples.loc[sample, "qualityTag"] = qc["qualityTag"]
+
         # Count peak number (if peaks in sheet)
         if "peakFile" in samples.columns:
             # and if sample has peaks
@@ -774,29 +775,6 @@ def readStats(args, logger):
 
                 except:
                     logger.warn("Record with FRiP value is empty or not found for sample %s" % sampleName)
-                    pass
-
-        # Compute NSC and RSC
-        if "peakFile" in samples.columns:
-            # if sample has peaks
-            if str(samples["peakFile"][sample]) != "nan":
-                try:
-                    """
-                    This will only be performed for samples with narrowPeaks due to no model building on broad peaks.
-                    """
-                    stats = parseMACSModel(os.path.join(dataDir, "peaks", sampleName, sampleName + "_model.r"))
-
-                    readLength = int(samples["readLength"][sample])
-
-                    # As defined in Landt, et al. 2012 Genome Research:
-                    NSC = abs(max(stats["altd"]) / min(stats["ycorr"]))
-                    # macs outputs cross-correlation values (cc) from -405 to 405bp, so to get cc(readLength) I do [405 + readLength]
-                    RSC = abs((max(stats["altd"]) - min(stats["ycorr"])) / (stats["ycorr"][405 + readLength] - min(stats["ycorr"])))
-
-                    samples.loc[sample, "NSC"] = NSC
-                    samples.loc[sample, "RSC"] = RSC
-                except:
-                    logger.warn("Record with MACS model couldn't be parsed for sample %s" % sampleName)
                     pass
 
     # convert duplicate rate to percentage
@@ -896,6 +874,11 @@ def analyse(args, logger):
         # check if sample is tagmented or not:
         tagmented = True if samples["technique"][sample] in tagment else False
 
+        if not tagmented:
+            nodupsbam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.nodups.bam")
+        else:
+            nodupsbam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted.nodups.bam")
+
         # Is it a histone?
         histone = True if any([i in samples["ip"][sample] for i in histones]) else False
 
@@ -923,6 +906,13 @@ def analyse(args, logger):
             memPerCpu=args.mem,
             userMail=args.user_mail
         )
+        if args.stage in ["all", "qc"]:
+            jobCode += peakTools(
+                inputBam=nodupsbam,
+                output=os.path.join(resultsDir, "sample_QC.tsv"),
+                plot=os.path.join(resultsDir, sampleName + "_QC.pdf"),
+                cpus=args.cpus
+            )
         if args.stage in ["all", "callpeaks"] and control:
             if args.peak_caller == "macs2":
                 # make dir for output
@@ -1299,6 +1289,29 @@ def parseMACSModel(modelFile):
     return out
 
 
+def parseQC(sampleName, qcFile):
+    """
+    Parses QC table produced by phantompeakqualtools (spp) and adds to sample annotation sheet
+    sample quality metrics for each sample.
+    """
+    series = pd.Series(index=["NSC", "RSC", "qualityTag"])
+    try:
+        with open(qcFile) as handle:
+            content = handle.readlines()  # list of strings per line
+    except:
+        return series
+
+    try:
+        line = [i for i in range(len(content)) if str(sampleName) in content[i]][0]
+        attrs = content[line].strip().split("\t")
+        series["NSC"] = attrs[-3]
+        series["RSC"] = attrs[-2]
+        series["qualityTag"] = attrs[-1]
+    except IndexError:
+        pass
+    return series
+
+
 def makeDiffBindSheet(samples, df, peaksDir, sheetFile):
     """
     Prepares and saves a diffBind annotation sheet from a pandas.DataFrame annotation with standard columns.
@@ -1515,7 +1528,7 @@ def skewer(inputFastq1, outputPrefix, cpus, adapters, inputFastq2=None):
     # Trimming adapters from sample
     echo "Trimming adapters from sample"
 
-    skewer \\
+    skewer --quiet \\
     -t {0} \\
     -m {1} \\
     -x {2} \\
@@ -1638,7 +1651,7 @@ def indexBam(inputBam):
     return command
 
 
-def peakTools(inputBam, output, plot):
+def peakTools(inputBam, output, plot, cpus):
     command = """
     # Get sample QC metrics
     echo "Getting sample QC metrics"
@@ -1647,10 +1660,10 @@ def peakTools(inputBam, output, plot):
     module load gcc/4.8.2
     module load openmpi/gcc/64/1.8.1
 
-    run_spp.R -rf -savp -savp={2} -s=-200:5:800 \\
+    run_spp.R -p={3} -rf -savp -savp={2} -s=0:5:500 \\
     -c={0} -out={1}
 
-    """.format(inputBam, output, plot)
+    """.format(inputBam, output, plot, cpus)
 
     return command
 

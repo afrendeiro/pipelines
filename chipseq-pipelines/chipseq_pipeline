@@ -68,6 +68,8 @@ def main():
                         help="Logging level. Default=INFO.", type=str)
     parser.add_argument("--dry-run", dest="dry_run", action="store_true",
                         help="Dry run. Assemble commands, but do not submit jobs to slurm. Default=False.")
+    parser.add_argument("--no-checks", dest="checks", action="store_false",
+                        help="Don't check file existence and integrity. Default=False.")
 
     # Sub commands
     subparser = parser.add_subparsers(title="sub-command", dest="command")
@@ -368,14 +370,16 @@ def preprocess(args, logger):
 
     # Check files exist and are not empty
     for sampleFile in samples['filePath']:
-        try:
-            if os.stat(sampleFile).st_size == 0:
-                logger.error("Provided file %s is empty." % sampleFile)
-                sys.exit(1)
-        except OSError:
-            logger.error("Provided file %s does not exist." % sampleFile)
-            raise IOError("Provided file %s does not exist." % sampleFile)
-            sys.exit(1)
+        if args.checks:
+            try:
+                if os.stat(sampleFile).st_size == 0:
+                    logger.error("Provided file %s is empty." % sampleFile)
+                    sys.exit(1)
+            except OSError:
+                logger.error("Provided file %s does not exist." % sampleFile)
+                # raise IOError("Provided file %s does not exist." % sampleFile)
+                # sys.exit(1)
+                continue
 
     # start pipeline
     projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
@@ -404,11 +408,20 @@ def preprocess(args, logger):
         jobName = projectName + "_" + sampleName
 
         # check if sample is paired end
-        readType, readLength = getReadType(samplesMerged["filePath"][sample][0])
-        samplesMerged['readType'][sample] = readType
-        samplesMerged['readLength'][sample] = readLength
+        try:
+            if args.checks:
+                readType, readLength = getReadType(samplesMerged["filePath"][sample][0])
+            samplesMerged['readType'][sample] = readType
+            samplesMerged['readLength'][sample] = readLength
 
-        PE = True if readType == "PE" else False
+            if readType == "PE":
+                PE = True
+            elif readType == "None":
+                PE = None
+            else:
+                PE = False
+        except:
+            continue
 
         # check if sample is tagmented or not:
         tagmented = True if samplesMerged["technique"][sample] in tagment else False
@@ -1660,10 +1673,10 @@ def peakTools(inputBam, output, plot, cpus):
     module load gcc/4.8.2
     module load openmpi/gcc/64/1.8.1
 
-    run_spp.R -p={3} -rf -savp -savp={2} -s=0:5:500 \\
+    run_spp.R -rf -savp -savp={2} -s=0:5:500 \\
     -c={0} -out={1}
 
-    """.format(inputBam, output, plot, cpus)
+    """.format(inputBam, output, plot)
 
     return command
 

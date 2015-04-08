@@ -9,18 +9,25 @@ Tasks include raw sequencing quality control, adapter removal, read trimming, ma
 
 
 
-# Instalation
-I recommend creating a virtual environment to install dependencies to running the pipeline.
-
-First, make sure you work with python 2.7 or higher:
+# Installation
+With pip it is as easy as:
     
-    module load python/2.7.6
+    pip install git@github.com:afrendeiro/chipseq-pipelines.git
+
+### Installing into a Python virtual environment
+I recommend creating a virtual environment to install dependencies and to run.
 
 Get virtualenv:
+    
+    sudo apt-get install python-virtualenv
+or
 
     curl -L -o virtualenv.py https://raw.githubusercontent.com/pypa/virtualenv/master/virtualenv.py
 
 Create a virtual environment named `<name>`:
+    
+    virtualenv <name>
+or (in case you got it with curl as above)
 
     python virtualenv.py <name>
 
@@ -28,24 +35,39 @@ Activate the environment:
 
     source <name>/bin/activate
 
-Clone the repository
-
-    git clone git@github.com:afrendeiro/chipseq-pipelines.git
-    cd chipseq-pipelines
-
-Install Python requirements:
+Install Python requirements in the virtual environment:
 
     pip install -r requirements.txt
+
+Now install the package in the virtual environment:
+
+    pip install git@github.com:afrendeiro/chipseq-pipelines.git
 
 Good to go!
 
 # Dependencies
-It uses the following software, which is available in the CeMM cluster:
+It uses the following software:
 - Fastqc
 - Piccard tools
 - Bowtie2
 - Samtools
 - Bamtools
+
+make sure these executables are in your `$PATH`.
+
+
+# Test
+Run:
+```sh
+PROJECT_NAME=test
+chipseq_pipeline --dry-run --no-checks preprocess $PROJECT_NAME examples/template_sample_annotation.csv
+chipseq_pipeline --dry-run --no-checks analyse $PROJECT_NAME examples/template_sample_annotation.replicates.matchedControls.csv
+chipseq_pipeline --dry-run --no-checks stats $PROJECT_NAME examples/template_sample_annotation.replicates.matchedControls.csv
+chipseq_pipeline --dry-run --no-checks compare $PROJECT_NAME examples/template_sample_annotation.replicates.matchedControls.csv
+```
+
+for now you need to set these options as well until I start using a config parser:
+`-r . --html-root . `
 
 # Project structure
 ```

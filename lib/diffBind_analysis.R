@@ -1,7 +1,7 @@
 #!/usr/bin/Rscript
 
 # load the library
-library(DiffBind)
+suppressPackageStartupMessages(library(package="DiffBind"))
 
 # parse arguments
 args <- commandArgs(TRUE)

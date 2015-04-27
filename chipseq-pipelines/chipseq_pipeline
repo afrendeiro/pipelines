@@ -718,6 +718,7 @@ def readStats(args, logger):
     if "peakFile" in samples.columns:
         samples["NSC"] = None
         samples["RSC"] = None
+        samples["qualityTag"] = None
         samples["peakNumber"] = None
         samples["FRiP"] = None
 
@@ -954,7 +955,21 @@ def analyse(args, logger):
                     broad=True if broad else False,
                     cpus=args.cpus
                 )
-
+            elif args.peak_caller == "zinba":
+                jobCode += bamToBed(
+                    inputBam=os.path.abspath(samples['filePath'][sample]),
+                    outputBed=os.path.join(dataDir, "peaks", sampleName + ".bed"),
+                )
+                jobCode += bamToBed(
+                    inputBam=controlBam,
+                    outputBed=os.path.join(dataDir, "peaks", controlName + ".bed"),
+                )
+                jobCode += zinbaCallPeaks(
+                    treatmentBed=os.path.join(dataDir, "peaks", sampleName + ".bed"),
+                    controlBed=os.path.join(dataDir, "peaks", controlName + ".bed"),
+                    tagmented=tagmented,
+                    cpus=args.cpus
+                )
         if args.stage in ["all", "findmotifs"] and control:
             # make dir for motifs
             if not os.path.exists(os.path.join(dataDir, "motifs", sampleName)):
@@ -1878,7 +1893,7 @@ def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir
     broad = "TRUE" if broad else "FALSE"
     command = """
     # Calling peaks with SPP
-    echo "calling peaks with SPP"
+    echo "Calling peaks with SPP"
     module load R
 
     Rscript {6}/lib/spp_peak_calling.R \\
@@ -1892,6 +1907,34 @@ def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir
 
     """.format(treatmentBam, controlBam, treatmentName, controlName, broad, cpus,
                os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
+
+    return command
+
+
+def bamToBed(inputBam, outputBed):
+    command = """
+    # Call peaks with ZINBA
+    echo "Calling peaks with ZINBA"
+
+    if [[ ! -s {1} ]]
+        then
+        bedtools bamtobed -i {0} > {1}
+    fi
+    """.format(inputBam, outputBed)
+
+    return command
+
+
+def zinbaCallPeaks(treatmentBed, controlBed, cpus, tagmented=False):
+    fragmentLength = 80 if tagmented else 180
+    command = """
+    # Call peaks with ZINBA
+    echo "Calling peaks with ZINBA"
+    module unload R
+    module load R/3.1.0
+
+    Rscript .local/bin/zinba.R -l {0} -t {1} -c {2}
+    """.format(fragmentLength, treatmentBed, controlBed)
 
     return command
 

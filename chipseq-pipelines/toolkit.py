@@ -1,14 +1,5 @@
 #!/usr/bin/env python
 
-"""
-Ngs toolkit
-Python wrapper functions to bioinformatics programs
-"""
-
-import os
-import re
-import textwrap
-
 
 def slurmHeader(jobName, output, queue="shortq", ntasks=1, time="10:00:00",
                 cpusPerTask=16, memPerCpu=2000, nodes=1, userMail=""):
@@ -48,6 +39,7 @@ def slurmFooter():
 
 
 def slurmSubmitJob(jobFile):
+    import os
     command = "sbatch %s" % jobFile
 
     return os.system(command)
@@ -187,7 +179,7 @@ def skewer(inputFastq1, outputPrefix, cpus, adapters, inputFastq2=None):
     # Trimming adapters from sample
     echo "Trimming adapters from sample"
 
-    skewer \\
+    skewer --quiet \\
     -t {0} \\
     -m {1} \\
     -x {2} \\
@@ -203,10 +195,12 @@ def skewer(inputFastq1, outputPrefix, cpus, adapters, inputFastq2=None):
     return command
 
 
-def bowtie2Map(inputFastq1, outputBam, log, genomeIndex, maxInsert, cpus, inputFastq2=None):
+def bowtie2Map(inputFastq1, outputBam, log, metrics, genomeIndex, maxInsert, cpus, inputFastq2=None):
     """
 
     """
+    import re
+
     outputBam = re.sub("\.bam$", "", outputBam)
     # Admits 2000bp-long fragments (--maxins option)
     command = """
@@ -218,22 +212,26 @@ def bowtie2Map(inputFastq1, outputBam, log, genomeIndex, maxInsert, cpus, inputF
     bowtie2 --very-sensitive -p {0} \\
     -x {1} \\
     --met-file {2} \\
-    """.format(cpus, genomeIndex, log)
+    """.format(cpus, genomeIndex, metrics)
     if inputFastq2 is None:
         command += "{0} ".format(inputFastq1)
     else:
         command += """--maxins {0} -1 {1} \\
-    -2 {2}""".format(maxInsert, inputFastq1, inputFastq2)
-    command += """ | \\
+    -2 {2} """.format(maxInsert, inputFastq1, inputFastq2)
+    command += """\\
+    2> {0} | \\
     samtools view -S -b - | \\
-    samtools sort - {0}
+    samtools sort - {1}
 
-    """.format(outputBam)
+    """.format(log, outputBam)
 
     return command
 
 
 def shiftReads(inputBam, genome, outputBam):
+    import re
+    import os
+
     outputBam = re.sub("\.bam$", "", outputBam)
     # TODO:
     # Implement read shifting with HTSeq or Cython
@@ -255,6 +253,8 @@ def shiftReads(inputBam, genome, outputBam):
 
 
 def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
+    import re
+
     transientFile = re.sub("\.bam$", "", outputBam) + ".dups.nosort.bam"
     outputBam = re.sub("\.bam$", "", outputBam)
     command = """
@@ -309,6 +309,23 @@ def indexBam(inputBam):
     return command
 
 
+def peakTools(inputBam, output, plot, cpus):
+    command = """
+    # Get sample QC metrics
+    echo "Getting sample QC metrics"
+
+    module load boost/1.57
+    module load gcc/4.8.2
+    module load openmpi/gcc/64/1.8.1
+
+    run_spp.R -rf -savp -savp={2} -s=0:5:500 \\
+    -c={0} -out={1}
+
+    """.format(inputBam, output, plot)
+
+    return command
+
+
 def qc():
     """
     $PRESEQ c_curve -B $PROJECTDIR/mapped/$SAMPLE_NAME.trimmed.bowtie2.sorted.shifted.dup.bam \
@@ -321,6 +338,9 @@ def qc():
 
 
 def bamToUCSC(inputBam, outputBigWig, genomeSizes, genome, tagmented=False):
+    import os
+    import re
+
     transientFile = os.path.abspath(re.sub("\.bigWig", "", outputBigWig))
     if not tagmented:
         # TODO:
@@ -396,6 +416,8 @@ def addTrackToHub(sampleName, trackURL, trackHub, colour, fivePrime=""):
 
 
 def linkToTrackHub(trackHubURL, fileName, genome):
+    import textwrap
+
     db = "org" if genome == "hg19" else "db"  # different database call for human
     genome = "human" if genome == "hg19" else genome  # change hg19 to human
 
@@ -428,7 +450,19 @@ def genomeWideCoverage(inputBam, genomeWindows, output):
     return command
 
 
+def calculateFRiP(inputBam, inputBed, output):
+    command = "cut -f 1,2,3 {0} ".format(inputBed)
+    command += "| bedtools coverage -counts "
+    command += "-abam {0} ".format(inputBam)
+    command += "-b - "
+    command += "| awk '{{sum+=$4}} END {{print sum}}' > {0}".format(output)
+
+    return command
+
+
 def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broad=False, plot=True):
+    import os
+
     if genome == "hg19":
         genome = "hs"
     elif genome == "mm10":
@@ -448,18 +482,18 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broa
     -g {2} -n {3} --outdir {4}
 
     """.format(treatmentBam, controlBam, genome, sampleName, outputDir)
-        command = """
-    # Call peaks with MACS2
-    echo "Calling peaks with MACS2"
+    #     command = """
+    # # Call peaks with MACS2
+    # echo "Calling peaks with MACS2"
 
-    macs2 callpeak \\
-    -t {0} \\
-    -c {1} \\
-    --bw 200 \\
-    --fix-bimodal --extsize 200 \\
-    -g {2} -n {3} --outdir {4}
+    # macs2 callpeak \\
+    # -t {0} \\
+    # -c {1} \\
+    # --bw 200 \\
+    # --fix-bimodal --extsize 180 \\
+    # -g {2} -n {3} --outdir {4}
 
-    """.format(treatmentBam, controlBam, genome, sampleName, outputDir)
+    # """.format(treatmentBam, controlBam, genome, sampleName, outputDir)
 
     else:
         # Parameter setting for broad factors according to Nature Protocols (2012)
@@ -476,7 +510,7 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broa
 
     """.format(treatmentBam, controlBam, genome, sampleName, outputDir)
 
-    if plot:
+    if plot and not broad:
         command += """
     # Plot MACS2 crosscorrelation
 
@@ -493,10 +527,12 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broa
 
 
 def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir, broad, cpus):
+    import os
+
     broad = "TRUE" if broad else "FALSE"
     command = """
     # Calling peaks with SPP
-    echo "calling peaks with SPP"
+    echo "Calling peaks with SPP"
     module load R
 
     Rscript {6}/lib/spp_peak_calling.R \\
@@ -510,6 +546,34 @@ def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir
 
     """.format(treatmentBam, controlBam, treatmentName, controlName, broad, cpus,
                os.path.abspath(os.path.dirname(os.path.realpath(__file__))))
+
+    return command
+
+
+def bamToBed(inputBam, outputBed):
+    command = """
+    # Call peaks with ZINBA
+    echo "Calling peaks with ZINBA"
+
+    if [[ ! -s {1} ]]
+        then
+        bedtools bamtobed -i {0} > {1}
+    fi
+    """.format(inputBam, outputBed)
+
+    return command
+
+
+def zinbaCallPeaks(treatmentBed, controlBed, cpus, tagmented=False):
+    fragmentLength = 80 if tagmented else 180
+    command = """
+    # Call peaks with ZINBA
+    echo "Calling peaks with ZINBA"
+    module unload R
+    module load R/3.1.0
+
+    Rscript .local/bin/zinba.R -l {0} -t {1} -c {2}
+    """.format(fragmentLength, treatmentBed, controlBed)
 
     return command
 
@@ -545,6 +609,8 @@ def AnnotatePeaks(peakFile, genome, motifFile, outputBed):
 
 
 def centerPeaksOnMotifs(peakFile, genome, windowWidth, motifFile, outputBed):
+    import os
+
     command = """
     # Center peaks on motif
     echo "centering peaks on motif"
@@ -564,6 +630,8 @@ def centerPeaksOnMotifs(peakFile, genome, windowWidth, motifFile, outputBed):
 
 def peakAnalysis(inputBam, peakFile, plotsDir, windowWidth, fragmentsize,
                  genome, n_clusters, strand_specific, duplicates):
+    import os
+
     command = """
     # Analyse peak profiles
     echo "Analysing peak profiles"
@@ -588,6 +656,8 @@ def peakAnalysis(inputBam, peakFile, plotsDir, windowWidth, fragmentsize,
 
 def tssAnalysis(inputBam, tssFile, plotsDir, windowWidth, fragmentsize, genome,
                 n_clusters, strand_specific, duplicates):
+    import os
+
     command = """
     # Analyse signal over TSSs
     echo "Analysing signal over TSSs"
@@ -615,6 +685,8 @@ def footprintAnalysis():
 
 
 def plotCorrelations(inputCoverage, plotsDir):
+    import os
+
     command = """
     # Plot correlations
     echo "plotting correlations"
@@ -623,7 +695,7 @@ def plotCorrelations(inputCoverage, plotsDir):
     {0} \\
     {1}
 
-    """.format(plotsDir, 
+    """.format(plotsDir,
                " ".join(["%s"] * len(inputCoverage)) % tuple(inputCoverage),
                os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
                )
@@ -632,6 +704,8 @@ def plotCorrelations(inputCoverage, plotsDir):
 
 
 def diffBind(inputCSV, jobName, plotsDir):
+    import os
+
     command = """
     # Detect differential binding with diffBind
     echo "Detecting differential binding with diffBind"

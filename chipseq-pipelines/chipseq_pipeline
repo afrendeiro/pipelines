@@ -8,11 +8,11 @@ from argparse import ArgumentParser
 import os
 import sys
 import logging
+from pipelines import Project
+from pipelines import toolkit as tk
 import pandas as pd
 import time
-import random
 import re
-import string
 import textwrap
 import shutil
 import subprocess
@@ -34,51 +34,103 @@ def main():
     # Parse command-line arguments
     parser = ArgumentParser(description="ChIP-seq pipeline.")
 
-    # Global options
-    # positional arguments
-    # optional arguments
-    parser.add_argument("-r", "--project-root", default="/fhgfs/groups/lab_bock/shared/projects/",
-                        dest="project_root", type=str,
-                        help="""Directory in which the project will reside.
-                        Default=/fhgfs/groups/lab_bock/shared/projects/.""")
-    parser.add_argument("--html-root", default="/fhgfs/groups/lab_bock/public_html/arendeiro/",
-                        dest="html_root", type=str,
-                        help="""public_html directory in which bigwig files for the project will reside.
-                        Default=/fhgfs/groups/lab_bock/public_html/.""")
-    parser.add_argument("--url-root", default="http://www.biomedical-sequencing.at/bocklab/arendeiro/",
-                        dest="url_root", type=str,
-                        help="""Url mapping to public_html directory where bigwig files for the project will be accessed.
-                        Default=http://www.biomedical-sequencing.at/bocklab.""")
-    parser.add_argument("--keep-tmp-files", dest="keep_tmp", action="store_true",
+    # Subparsers
+    subparser = parser.add_subparsers(title="sub-command", dest="command")
+    subparser = mainArgParser(subparser)
+    subparser = preprocessArgParser(subparser)
+    subparser = analyzeArgParser(subparser)
+    subparser = compareArgParser(subparser)
+
+    # Parse
+    args = parser.parse_args()
+
+    # Logging
+    logger = createLogger()
+
+    # Start project
+    prj = Project(args.project_name)
+    prj.addSampleSheet(args.csv)
+
+    # Start main function
+    if args.command == "preprocess":
+        preprocess(args, prj)
+    elif args.command == "stats":
+        readStats(args, prj)
+    elif args.command == "analyse":
+        analyse(args, prj)
+    elif args.command == "compare":
+        compare(args, prj)
+
+    # Exit
+    logger.info("Finished and exiting.")
+
+    # Copy log to projectDir
+    shutil.copy2(
+        os.path.join(os.getcwd(), prj.name + ".log"),
+        os.path.join(prj.dirs.runs, prj.name + ".log")
+    )
+
+    sys.exit(1)
+
+
+def mainArgParser(parser):
+    """
+    Global options for pipeline.
+    """
+    # Project
+    parser.add_argument(dest="project_name", help="Project name.", type=str)
+    parser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)  # improvement: check project dirs for csv
+
+    # Behaviour
+    parser.add_argument("-k", "--keep-tmp", dest="keep_tmp", action="store_true",
                         help="Keep intermediary files. If not it will only preserve final files. Default=False.")
-    parser.add_argument("-c", "--cpus", default=16, dest="cpus",
-                        help="Number of CPUs to use. Default=16.", type=int)
-    parser.add_argument("-m", "--mem-per-cpu", default=2000, dest="mem",
-                        help="Memory per CPU to use. Default=2000.", type=int)
-    parser.add_argument("-q", "--queue", default="shortq", dest="queue",
-                        choices=["develop", "shortq", "mediumq", "longq"],
-                        help="Queue to submit jobs to. Default=shortq", type=str)
-    parser.add_argument("-t", "--time", default="10:00:00", dest="time",
-                        help="Maximum time for jobs to run. Default=10:00:00", type=str)
-    parser.add_argument("--user-mail", default="", dest="user_mail",
-                        help="User mail address. Default=<submitting user>.", type=str)
     parser.add_argument("-l", "--log-level", default="INFO", dest="log_level",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                         help="Logging level. Default=INFO.", type=str)
     parser.add_argument("--dry-run", dest="dry_run", action="store_true",
                         help="Dry run. Assemble commands, but do not submit jobs to slurm. Default=False.")
+    parser.add_argument("--no-checks", dest="checks", action="store_false",
+                        help="Don't check file existence and integrity. Default=False.")
 
-    # Sub commands
-    subparser = parser.add_subparsers(title="sub-command", dest="command")
+    # Directories
+    # parser.add_argument("-r", "--project-root", default=None,
+    #                     dest="project_root", type=str,
+    #                     help="""Directory in which the project will reside.
+    #                     Default is specified in the pipeline config file.""")
+    # parser.add_argument("--html-root", default=None,
+    #                     dest="html_root", type=str,
+    #                     help="""public_html directory in which bigwig files for the project will reside.
+    #                     Default is specified in the pipeline config file.""")
+    # parser.add_argument("--url-root", default=None,
+    #                     dest="url_root", type=str,
+    #                     help="""Url mapping to public_html directory where bigwig files for the project will be accessed.
+    #                     Default is specified in the pipeline config file.""")
+
+    # Slurm-related
+    parser.add_argument("-c", "--cpus", default=None, dest="cpus",
+                        help="Number of CPUs to use. Default is specified in the pipeline config file.", type=int)
+    parser.add_argument("-m", "--mem-per-cpu", default=4000, dest="mem",
+                        help="Memory per CPU to use. Default is specified in the pipeline config file.", type=int)
+    parser.add_argument("-q", "--queue", default="shortq", dest="queue",
+                        choices=["develop", "shortq", "mediumq", "longq"],
+                        help="Queue to submit jobs to. Default is specified in the pipeline config file.", type=str)
+    parser.add_argument("-t", "--time", default="10:00:00", dest="time",
+                        help="Maximum time for jobs to run. Default is specified in the pipeline config file.", type=str)
+
+    return parser
+
+
+def preprocessArgParser(subparser):
+    """
+    subparser for preprocess
+    """
 
     # preprocess
     preprocess_subparser = subparser.add_parser("preprocess")
-    preprocess_subparser.add_argument(dest="project_name", help="Project name.", type=str)
-    preprocess_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
     preprocess_subparser.add_argument("-s", "--stage", default="all", dest="stage",
                                       choices=["all", "bam2fastq", "fastqc", "trim", "mapping",
                                                "shiftreads", "markduplicates", "removeduplicates",
-                                               "indexbam", "qc", "maketracks"],
+                                               "indexbam", "maketracks", "coverage"],
                                       help="Run only these stages. Default=all.", type=str)
     preprocess_subparser.add_argument("--trimmer", default="skewer", choices=["trimmomatic", "skewer"],
                                       dest="trimmer", help="Trimmer to use. Default=skewer.", type=str)
@@ -86,19 +138,21 @@ def main():
                                       dest="maxinsert",
                                       help="Maximum allowed insert size allowed for paired end mates. Default=2000.",
                                       type=int)
+    preprocess_subparser.add_argument("--window-size", default=1000, dest="windowsize",
+                                      help="Window size used for genome-wide correlations. Default=1000.",
+                                      type=int)
+    return subparser
 
-    # stats
-    stats_subparser = subparser.add_parser("stats")
-    stats_subparser.add_argument(dest="project_name", help="Project name.", type=str)
-    stats_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
 
+def analyzeArgParser(subparser):
+    """
+    subparser for stats.
+    """
     # analyse
     analyse_subparser = subparser.add_parser("analyse")
-    analyse_subparser.add_argument(dest="project_name", help="Project name.", type=str)
-    analyse_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
     analyse_subparser.add_argument("-s", "--stage", default="all", dest="stage",
-                                   choices=["all", "callpeaks", "findmotifs", "centerpeaks",
-                                            "annotatepeaks", "peakanalysis", "tssanalysis", "footprints"],
+                                   choices=["all", "qc", "callpeaks", "findmotifs", "centerpeaks",
+                                            "annotatepeaks", "peakanalysis", "tssanalysis", "footprints", "frip"],
                                    help="Run only these stages. Default=all.", type=str)
     analyse_subparser.add_argument("--peak-caller", default="macs2", choices=["macs2", "spp"],
                                    dest="peak_caller", help="Peak caller to use. Default=macs2.", type=str)
@@ -106,11 +160,15 @@ def main():
                                    dest="peak_window_width",
                                    help="Width of window around peak motifs. Default=2000.",
                                    type=int)
+    return subparser
 
+
+def compareArgParser(subparser):
+    """
+    subparser for compare.
+    """
     # compare
     compare_subparser = subparser.add_parser("compare")
-    compare_subparser.add_argument(dest="project_name", help="Project name.", type=str)
-    compare_subparser.add_argument(dest="csv", help="CSV file with sample annotation.", type=str)
     compare_subparser.add_argument("-s", "--stage", default="all", dest="stage",
                                    choices=["all", "diffbind", "correlations"],
                                    help="Run only these stages. Default=all.", type=str)
@@ -121,10 +179,14 @@ def main():
                                    help="Width of window to make genome-wide correlations. Default=1000.",
                                    type=int)
 
-    # Parse
-    args = parser.parse_args()
+    return subparser
 
-    # Logging
+
+def createLogger(args, prj):
+    """
+    Creates a logger for the run.
+    """
+
     global logger
     logger = logging.getLogger(__name__)
     levels = {
@@ -152,537 +214,39 @@ def main():
     stdout.setFormatter(formatter)
     logger.addHandler(stdout)
 
-    # Start main function
-    if args.command == "preprocess":
-        logger, fr, to = preprocess(args, logger)
-    elif args.command == "stats":
-        logger, fr, to = readStats(args, logger)
-    elif args.command == "analyse":
-        logger, fr, to = analyse(args, logger)
-
-    elif args.command == "compare":
-        logger, fr, to = compare(args, logger)
-
-    # Exit
-    logger.info("Finished and exiting.")
-
-    # Copy log to projectDir
-    shutil.copy2(fr, to)
-
-    sys.exit(1)
-
-"""
-Workflow explained:
-    - Project is created
-    - Sample sheet is created and added to project (spawns next)
-        - Samples are created and added to project (automatically)
-
-    In the process, stuff is checked:
-        - project structure (created if not existing)
-        - existance of csv sample sheet
-        - existance of bam files from samples
-
-    Working example:
-        prj = Project("ngs", parent="/home/afr/", parenthtml="/home/afr/")
-        sheet = SampleSheet("/home/afr/workspace/chipmentation/chipmentation.sample_annotation.csv", prj)
-        # that's it!
-
-        # explore!
-        prj.samples
-        prj.samples[0].peakFile
-
-        prj.dirs.results
-        prj.sheet.to_csv(os.path.join(prj.dirs.root, "sample_annotation.csv"))
-"""
+    prj.logger = logger
 
 
-class Paths(object):
+def preprocess(args, prj):
     """
-    A class holding paths as attributes.
-    """
-    pass
-
-
-class Project(object):
-    """
-    A class to model a Project.
-
-    Required kwargs:
-        parent : str - a path to where the project structure will be created.
-        parenthtml : str - a path to where the project structure will be created.
-
-    Example:
-        prj = Project("ngs", parent="/projects", parenthtml="/public_html")
-    """
-    def __init__(self, name, **kwargs):
-        super(Project, self).__init__()
-        # check it's a string
-        self.name = name
-
-        # Path structure
-        self.dirs = Paths()
-        # parse kwargs
-        # This will in the future be read from the config!
-        for key in ('parent', 'parenthtml'):
-            if key in kwargs:
-                # check they're strings
-                setattr(self.dirs, key, kwargs[key])
-            else:
-                raise ValueError("Project initialization requires the two kwargs")
-
-        # flow
-        self.setProjectDirs()
-        self.makeProjectDirs()
-        self.setProjectPermissions()
-
-        # samples
-        self.samples = list()
-
-    def setProjectDirs(self):
-        # check self.project_root exists and user has write access
-        self.dirs.parent = os.path.abspath(self.dirs.parent)
-        if not os.access(self.dirs.parent, os.W_OK):
-            raise IOError("%s does not exist, or user has no write access.\n\
-            Use option '-r' '--project-root' to set a non-default project root path." % self.dirs.parent)
-
-        # check self.html_root exists and user has write access
-        self.dirs.parenthtml = os.path.abspath(self.dirs.parenthtml)
-        if not os.access(self.dirs.parenthtml, os.W_OK):
-            raise IOError("%s does not exist, or user has no write access.\n\
-            Use option '--html-root' to set a non-default html root path." % self.dirs.parenthtml)
-
-        # Project directory structure
-        self.dirs.root = os.path.join(self.dirs.parent, self.name)
-        # Runs
-        self.dirs.runs = os.path.join(self.dirs.root, "runs")
-        # Data
-        self.dirs.data = os.path.join(self.dirs.root, "data")
-        self.dirs.fastq = os.path.join(self.dirs.data, "fastq")
-        self.dirs.fastqc = os.path.join(self.dirs.data, "fastqc")
-        self.dirs.raw = os.path.join(self.dirs.data, "raw")
-        self.dirs.mapped = os.path.join(self.dirs.data, "mapped")
-        self.dirs.coverage = os.path.join(self.dirs.data, "coverage")
-        self.dirs.peaks = os.path.join(self.dirs.data, "peaks")
-        self.dirs.motifs = os.path.join(self.dirs.data, "motifs")
-        # Results
-        self.dirs.results = os.path.join(self.dirs.root, "results")
-        self.dirs.plots = os.path.join(self.dirs.results, "plots")
-        # Html structure
-        self.dirs.html = os.path.join(self.dirs.parenthtml, self.name)
-        self.dirs.bigwig = os.path.join(self.dirs.html, "bigwig")
-
-    def makeProjectDirs(self):
-        """
-        Creates project directories if they don't exist.
-        """
-        for name, path in self.dirs.__dict__.items():
-            if not os.path.exists(path):
-                os.makedirs(path)
-
-    def setProjectPermissions(self):
-        """
-        Makes public_html folder executable.
-        """
-        for d in [self.dirs.parenthtml, self.dirs.html, self.dirs.bigwig]:
-            try:
-                os.chmod(d, 0755)
-            except OSError:
-                # logger.error("cannot change folder's mode: %s" % d)
-                continue
-
-    def addSample(self, sample):
-        """
-        Adds a sample to self.samples.
-        """
-        # Todo: check sample is Sample object
-        # Tie sample and project bilateraly
-        sample.project = self
-        # Append
-        self.samples.append(sample)
-
-
-class SampleSheet(object):
-    """
-    Class to model a sample annotation sheet.
-    """
-    def __init__(self, csv, project):
-        super(SampleSheet, self).__init__()
-        # TODO: checks on given args
-        self.csv = csv
-        # pair project and sheet
-        self.project = project
-        self.project.sheet = self
-
-        self.samples = list()
-        self._columns = ["cellLine", "numberCells", "technique", "ip", "patient",
-                         "treatment", "biologicalReplicate", "technicalReplicate", "filePath", "genome"]
-        self.checkSheet()
-
-        # Generate sample objects from annotation sheet
-        # and add them to project
-        self.getSamples()
-        self.getMergedReplicates()
-        self.addSamplesToProject()
-
-    def checkSheet(self):
-        """
-        Check if csv file has all required columns.
-        """
-        self.sheet = pd.read_csv(self.csv)
-        missing = [col for col in self._columns if col not in self.sheet.columns]
-        if len(missing) != 0:
-            raise TypeError("Annotation sheet is missing columns: %s" % " ".join(missing))
-
-    def getSamples(self):
-        """
-        Creates samples from annotation sheet and adds the samples to project.
-        """
-        for sample in range(len(self.sheet)):
-            self.samples.append(Sample(self.sheet.ix[sample]))
-
-    def getMergedReplicates(self):
-        """
-        Returns biological replicates (merged technical replicates) samples
-        and merged biological replicates samples.
-        """
-        # copy columns list
-        attributes = self._columns[:]
-        # ignore some fields in the annotation sheet
-        attributes.pop(self._columns.index("filePath"))
-
-        # get technical replicates -> biological replicates
-        attributes.pop(self._columns.index("technicalReplicate"))
-
-        for key, values in self.sheet.groupby(attributes).groups.items():
-            rep = self.sheet.ix[values][attributes].reset_index(drop=True).ix[0]
-            if len(values) > 1:
-                rep["technicalReplicate"] = 0
-                rep["filePath"] = self.sheet.ix[values]["filePath"].tolist()
-                # append biological replicate to samples
-                self.samples.append(Sample(rep))
-
-        # get biological replicates -> merged biological replicates
-        attributes.pop(self._columns.index("biologicalReplicate"))
-
-        for key, values in self.sheet.groupby(attributes).groups.items():
-            rep = self.sheet.ix[values][attributes].reset_index(drop=True).ix[0]
-            if len(values) > 1:
-                # check samples in group are from different biological replicates
-                if len(self.sheet.ix[self.sheet.groupby(attributes).groups[key]]['biologicalReplicate'].unique()) > 1:
-                    rep["biologicalReplicate"] = 0
-                    rep["technicalReplicate"] = 0
-                    rep["filePath"] = self.sheet.ix[values]["filePath"].tolist()
-                    # append merged biological replicate to samples
-                    self.samples.append(Sample(rep))
-
-    def addSamplesToProject(self):
-        """
-        Adds its samples to its project.
-        """
-        for sample in self.samples:
-            self.project.addSample(sample)
-
-    def to_csv(self, path):
-        """
-        Saves a csv annotation sheet from the samples.
-        """
-        df = pd.DataFrame(self.samples)
-        df = df[["sampleName"] + self._columns]
-        df.to_csv(path, index=False)
-
-
-class Sample(pd.Series):
-    """Class to model Samples basd on a pandas Series."""
-    def __init__(self, series):
-        # Use pd.Series object to have all sample attributes
-        if not isinstance(series, pd.Series):
-            raise TypeError("Provided object is not a pandas Series.")
-        super(Sample, self).__init__(series)
-
-        self.checkNotEmpty()
-        self.generateName()
-
-        # check if sample is to be analysed with cuts
-        # self.tagmented = True if self.technique in ["DNASE", "DNASESEQ", "DNASE-SEQ", "DHS", "DHS-SEQ", "DHSSEQ", "ATAC", "ATAC-SEQ", "ATACSEQ", "CM"] else False
-
-        # self.getReadType()
-        # self.setFilePaths()
-        # self.getTrackColour()
-
-    def checkNotEmpty(self):
-        """
-        Check if any important attribute is None.
-        """
-        req = ["genome", "biologicalReplicate", "technicalReplicate", "filePath"]
-
-        if not all([hasattr(self, attr) for attr in req]):
-            raise ValueError("Required columns for sample do not exist.")
-
-        if any([attr == "nan" for attr in req]):
-            raise ValueError("Required values for sample are empty.")
-
-    def generateName(self):
-        """
-        Generates a name for the sample by joining some of its attribute strings.
-        """
-        self.name = "_".join(
-            str(x) for x in [
-                self.cellLine, self.numberCells, self.technique,
-                self.ip, self.patient, self.treatment,
-                self.biologicalReplicate, self.technicalReplicate,
-                self.genome
-            ]
-        )
-        self.sampleName = self.name
-
-    def asSeries(self):
-        """
-        Returns a pandas.Series with all the sample's attributes.
-        """
-        return pd.Series(self.__dict__)
-
-    def getReadType(self, n=10):
-        """
-        Gets the read type (single, paired) and length of bam file.
-        Returns tuple of (readType=string, readLength=int).
-        """
-        from collections import Counter
-
-        # for samples with multiple original bams, get only first
-        if type(self.unmappedBam) == list:
-            bam = self.unmappedBam[0]
-        else:
-            bam = self.unmappedBam
-
-        # view reads
-        p = subprocess.Popen(['samtools', 'view', bam], stdout=subprocess.PIPE)
-
-        # Count paired alignments
-        paired = 0
-        readLength = Counter()
-        while n > 0:
-            line = p.stdout.next().split("\t")
-            flag = int(line[1])
-            readLength[len(line[9])] += 1
-            if 1 & flag:  # check decimal flag contains 1 (paired)
-                paired += 1
-            n -= 1
-        p.kill()
-
-        # Get most abundant read length
-        self.readLength = sorted(readLength)[-1]
-
-        # If at least half is paired, consider paired end reads
-        if paired > (n / 2):
-            self.readType = "PE"
-        else:
-            self.readType = "SE"
-
-    def setFilePaths(self):
-        """
-        Sets the paths of all files for this sample.
-        """
-        self.fastqc = self.project.dirs.fastqc
-
-        fastq = os.path.join(self.project.dirs.fastq, self.name)
-        if self.readType == "SE":
-            self.fastq = fastq + ".fastq"
-        else:
-            self.fastq1 = fastq + ".1.fastq"
-            self.fastq2 = fastq + ".2.fastq"
-            self.fastqUnpaired = fastq + ".unpaired.fastq"
-
-        if self.readType == "SE":
-            self.trimmed = fastq + ".trimmed.fastq"
-        else:
-            self.trimmed1 = fastq + ".1.trimmed.fastq"
-            self.trimmed2 = fastq + ".2.trimmed.fastq"
-            self.trimmed1Unpaired = fastq + ".1_unpaired.trimmed.fastq"
-            self.trimmed2Unpaired = fastq + ".2_unpaired.trimmed.fastq"
-
-        mapped = os.path.join(self.project.dirs.mapped, self.name)
-        self.mapped = mapped + ".trimmed.bowtie2.bam"
-        self.alnRates = os.path.join(self.project.dirs.results, self.name + ".alnRates.txt")
-
-        if not self.tagmented:
-            self.dups = mapped + ".trimmed.bowtie2.dups.bam"
-            self.nodups = mapped + ".trimmed.bowtie2.nodups.bam"
-        else:
-            self.shifted = mapped + ".trimmed.bowtie2.shifted.bam"
-            self.dups = mapped + ".trimmed.bowtie2.shifted.dups.bam"
-            self.nodups = mapped + ".trimmed.bowtie2.shifted.nodups.bam"
-
-        self.dupsMetrics = os.path.join(self.dirs.results, self.name + ".duplicates.txt")
-
-        self.bigwig = os.path.join(self.dirs.htmlDir, self.name + ".bigWig")
-        self.trackURL = self.config.urlRoot + self.name + ".bigWig",
-        self.coverage = os.path.join(self.dirs.coverage, self.name + ".cov")
-
-    def getTrackColour(self):
-        """
-        Get a colour for a genome browser track based on the IP.
-        """
-        if self.ip in self.config.trackColours.keys():
-            self.trackColour = self.config.trackColours[self.ip]
-        else:
-            if self.technique in ["ATAC", "ATACSEQ", "ATAC-SEQ"]:
-                self.trackColour = self.config.trackColours["ATAC"]
-            elif self.technique in ["DNASE", "DNASESEQ", "DNASE-SEQ"]:
-                self.trackColour = self.config.trackColours["DNASE"]
-            else:
-                self.trackColour = random.sample(self.colourGradient, 1)[0]  # pick one randomly
-
-
-def preprocess(args, logger):
-    """
-    This takes unmapped Bam files and makes trimmed, aligned, indexed (and shifted if necessary)
-    Bam files along with a UCSC browser track.
+    This takes unmapped Bam files and makes trimmed, aligned, duplicate marked
+    and removed, indexed (and shifted if necessary) Bam files
+    along with a UCSC browser track.
     """
 
-    logger.info("Starting sample preprocessing.")
-
-    logger.debug("Checking project directories exist and creating if not.")
-    htmlDir, projectDir, dataDir, resultsDir, urlRoot = checkProjectDirs(args, logger)
-
-    # Paths to static files on the cluster
-    genomeFolder = "/fhgfs/prod/ngs_resources/genomes/"
-    genomeIndexes = {
-        "hg19": os.path.join(genomeFolder, "hg19/forBowtie2/withoutRandom/hg19"),
-        "mm10": os.path.join(genomeFolder, "mm10/forBowtie2/mm10/index_woRandom/mm10"),
-        "dr7": os.path.join(genomeFolder, "dr7/forBowtie2/dr7")
-    }
-    genomeSizes = {
-        "hg19": "/fhgfs/groups/lab_bock/arendeiro/share/hg19.chrom.sizes",
-        "mm10": "/fhgfs/groups/lab_bock/arendeiro/share/mm10.chrom.sizes",
-        "dr7": "/fhgfs/groups/lab_bock/arendeiro/share/danRer7.chrom.sizes"
-    }
-    genomeWindows = {
-        "hg19": "/fhgfs/groups/lab_bock/arendeiro/share/hg19.genomeWindows_10kb.bed",
-        "mm10": "/fhgfs/groups/lab_bock/arendeiro/share/mm10.genomeWindows_10kb.bed",
-        "dr7": "/fhgfs/groups/lab_bock/arendeiro/share/danRer7.genomeWindows_10kb.bed"
-    }
-    adapterFasta = "/fhgfs/groups/lab_bock/shared/cm.fa"
-
-    # Other static info
-    tagment = [
-        "DNASE", "DNASESEQ", "DNASE-SEQ", "DHS", "DHS-SEQ", "DHSSEQ",
-        "ATAC", "ATAC-SEQ", "ATACSEQ",
-        "CM"
-    ]
-
-    # from the ggplot2 color blind pallete
-    # #999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7"
-    # shortly: green,red=active, orange=transcription, blue=repression, yellow=potential
-    colours = {
-        "IGG": "153,153,153", "INPUT": "153,153,153",  # grey
-        "H3K36ME1": "230,159,0", "H3K36ME2": "230,159,0", "H3K36ME3": "230,159,0",  # orange
-        "H3K4ME3": "0,158,115",  # bluish green
-        "H3K4ME1": "120,114,33", "H3K14ac": "120,114,33",  # yellow
-        "H3K27ME1": "0,114,178", "H3K27ME2": "0,114,178", "H3K27ME3": "0,114,178",  # blue
-        "H3K9ME1": "86,180,233", "H3K9ME2": "86,180,233", "H3K9ME3": "86,180,233",  # sky blue
-        "H3AC": "213,94,0", "H3K9AC": "213,94,0", "H3K27AC": "213,94,0", "H3K56AC": "213,94,0", "H3K56AC": "213,94,0",  # vermillion
-        "H3K79ME1": "204,121,167", "H3K79ME2": "204,121,167", "H3K79ME3": "204,121,167",  # reddish purple
-        "ATAC": "0,158,115",
-        "DNASE": "0,158,115",
-    }
-
-    colour_gradient = [  # 10 colour gradient from red to blue
-        "155,3,5", "140,2,18", "125,2,31", "110,2,44", "96,2,57",
-        "81,2,70", "66,2,83", "52,2,96", "37,2,109", "22,2,122"
-    ]
-
-    # Parse sample information
-    args.csv = os.path.abspath(args.csv)
-
-    # check if exists and is a file
-    if not os.path.isfile(args.csv):
-        logger.error("Sample annotation '%s' does not exist, or user has no read access." % args.csv)
-        sys.exit(1)
-
-    # read in
-    samples = pd.read_csv(args.csv)
-
-    # TODO:
-    # Perform checks on the variables given
-    # (e.g. genome in genomeIndexes)
-
-    # Check files exist and are not empty
-    for sampleFile in samples['filePath']:
-        try:
-            if os.stat(sampleFile).st_size == 0:
-                logger.error("Provided file %s is empty." % sampleFile)
-                sys.exit(1)
-        except OSError:
-            logger.error("Provided file %s does not exist." % sampleFile)
-            raise IOError("Provided file %s does not exist." % sampleFile)
-            sys.exit(1)
+    prj.logger.info("Starting sample preprocessing.")
 
     # start pipeline
-    projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
-
-    # Get biological replicates and merged biological replicates
-    logger.debug("Checking which samples should be merged.")
-    samplesMerged = getReplicates(samples.copy())
-    # ^^ this is the new annotation sheet as well
-    samplesMerged['readType'] = None
-    samplesMerged['readLength'] = None
-
-    # add field for manual sample pairing
-    samplesMerged["controlSampleName"] = None
+    runName = "_".join([prj.name, "preprocess", time.strftime("%Y%m%d-%H%M%S")])
 
     # add track headers to track hubs
-    for genome in samplesMerged["genome"].unique():
-        with open(os.path.join(htmlDir, "trackHub_{0}.txt".format(genome)), "w") as handle:
+    for genome in pd.DataFrame(prj.samples)["genome"].unique():
+        with open(os.path.join(prj.dirs.htmlDir, "trackHub_{0}.txt".format(genome)), "w") as handle:
             handle.write("browser position chr21:28,049,584-38,023,583\n")
 
     # Preprocess samples
-    for sample in range(len(samplesMerged)):
-        # Get sample name
-        sampleName = samplesMerged["sampleName"][sample]
-
+    for sample in prj.samples:
         # get jobname
-        jobName = projectName + "_" + sampleName
-
-        # check if sample is paired end
-        readType, readLength = getReadType(samplesMerged["filePath"][sample][0])
-        samplesMerged['readType'][sample] = readType
-        samplesMerged['readLength'][sample] = readLength
-
-        PE = True if readType == "PE" else False
-
-        # check if sample is tagmented or not:
-        tagmented = True if samplesMerged["technique"][sample] in tagment else False
-
-        # get intermediate names for files
-        if len(samplesMerged["filePath"][sample]) == 1:
-            unmappedBam = samplesMerged["filePath"][sample][0]
-        else:
-            unmappedBam = os.path.join(dataDir, "raw", sampleName + ".bam")
-
-        if not tagmented:
-            bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2")
-        else:
-            bam = os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.shifted")
-
-        # get colour for tracks
-        if str(samplesMerged["ip"][sample]).upper() in colours.keys():
-            colour = colours[samplesMerged["ip"][sample].upper()]
-        else:
-            if samplesMerged["technique"][sample] in ["ATAC", "ATACSEQ", "ATAC-SEQ"]:
-                colour = colours["ATAC"]
-            elif samplesMerged["technique"][sample] in ["DNASE", "DNASESEQ", "DNASE-SEQ"]:
-                colour = colours["DNASE"]
-            else:
-                colour = random.sample(self.config.colourGradient, 1)[0]  # pick one randomly
+        jobName = "_".join([runName, sample.sampleName])
 
         # keep track of temporary files
         tempFiles = list()
 
         # assemble commands
         # get job header
-        jobCode = slurmHeader(
+        jobCode = tk.slurmHeader(
             jobName=jobName,
-            output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
+            output=os.path.join(prj.dirs.logs, jobName + ".slurm.log"),
             queue=args.queue,
             time=args.time,
             cpusPerTask=args.cpus,
@@ -691,616 +255,483 @@ def preprocess(args, logger):
         )
         if args.stage in ["all"]:
             # if more than one technical replicate, merge bams
-            if len(samplesMerged["filePath"][sample]) > 1:
-                jobCode += mergeBams(
-                    inputBams=samplesMerged["filePath"][sample],  # this is a list of sample paths
-                    outputBam=unmappedBam
+            if type(sample.unmappedBam) == list:
+                jobCode += tk.mergeBams(
+                    inputBams=sample.unmappedBam,  # this is a list of sample paths
+                    outputBam=os.path.join(prj.dirs.raw, sample.sampleName + ".bam")
                 )
+                # replace list with path to merged unmapped bam
+                sample.unmappedBam = os.path.join(prj.dirs.raw, sample.sampleName + ".bam")
         if args.stage in ["all", "fastqc"]:
             # TODO:
             # Fastqc should be independent from this job but since there's no option in fastqc to specify
             # the sample name, I'll for now run it on the already renamed fastq file produced before,
             # which requires fastqc to run in the same job as the rest :S
-            jobCode += fastqc(
-                inputBam=unmappedBam,
-                outputDir=os.path.join(dataDir, "fastqc")
+            jobCode += tk.fastqc(
+                inputBam=sample.unmappedBam,
+                outputDir=prj.dirs.fastqc
             )
         # convert bam to fastq
         if args.stage in ["all", "bam2fastq"]:
-            if not PE:
-                jobCode += bam2fastq(
-                    inputBam=unmappedBam,
-                    outputFastq=os.path.join(dataDir, "fastq", sampleName + ".fastq")
+            if not sample.paired:
+                jobCode += tk.bam2fastq(
+                    inputBam=sample.unmappedBam,
+                    outputFastq=sample.fastq
                 )
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".fastq"))
+                tempFiles.append(sample.fastq)
             else:
-                jobCode += bam2fastq(
-                    inputBam=unmappedBam,
-                    outputFastq=os.path.join(dataDir, "fastq", sampleName + ".1.fastq"),
-                    outputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.fastq"),
-                    unpairedFastq=os.path.join(dataDir, "fastq", sampleName + ".unpaired.fastq")
+                jobCode += tk.bam2fastq(
+                    inputBam=sample.unmappedBam,
+                    outputFastq=sample.fastq1,
+                    outputFastq2=sample.fastq2,
+                    unpairedFastq=sample.fastqUnpaired
                 )
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".1.fastq"))
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".2.fastq"))
-                tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".unpaired.fastq"))
+                tempFiles.append(sample.fastq1)
+                tempFiles.append(sample.fastq2)
+                tempFiles.append(sample.fastqUnpaired)
 
         if args.stage in ["all", "trim"]:
             # TODO:
             # Change absolute path to something usable by everyone or to an option.
             if args.trimmer == "trimmomatic":
-                jobCode += trimmomatic(
-                    inputFastq1=os.path.join(dataDir, "fastq", sampleName + ".fastq") if not PE else os.path.join(dataDir, "fastq", sampleName + ".1.fastq"),
-                    inputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.fastq") if PE else None,
-                    outputFastq1=os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq") if not PE else os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq"),
-                    outputFastq1unpaired=os.path.join(dataDir, "fastq", sampleName + ".1_unpaired.trimmed.fastq") if PE else None,
-                    outputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq") if PE else None,
-                    outputFastq2unpaired=os.path.join(dataDir, "fastq", sampleName + ".2_unpaired.trimmed.fastq") if PE else None,
+                jobCode += tk.trimmomatic(
+                    inputFastq1=sample.fastq1 if sample.paired else sample.fastq,
+                    inputFastq2=sample.fastq2 if sample.paired else None,
+                    outputFastq1=sample.trimmed1 if sample.paired else sample.trimmed,
+                    outputFastq1unpaired=sample.trimmed1Unpaired if sample.paired else None,
+                    outputFastq2=sample.trimmed2 if sample.paired else None,
+                    outputFastq2unpaired=sample.trimmed2Unpaired if sample.paired else None,
                     cpus=args.cpus,
-                    adapters=adapterFasta,
-                    log=os.path.join(resultsDir, sampleName + ".trimlog.txt")
+                    adapters=prj.config["adapters"],
+                    log=sample.trimlog
                 )
-                if not PE:
-                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"))
+                if not sample.paired:
+                    tempFiles.append(sample.fastq1)
                 else:
-                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq"))
-                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq"))
-                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".1_unpaired.trimmed.fastq"))
-                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".2_unpaired.trimmed.fastq"))
+                    tempFiles.append(sample.trimmed1)
+                    tempFiles.append(sample.trimmed1Unpaired)
+                    tempFiles.append(sample.trimmed2)
+                    tempFiles.append(sample.trimmed2Unpaired)
 
             if args.trimmer == "skewer":
-                jobCode += skewer(
-                    inputFastq1=os.path.join(dataDir, "fastq", sampleName + ".fastq") if not PE else os.path.join(dataDir, "fastq", sampleName + ".1.fastq"),
-                    inputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.fastq") if PE else None,
-                    outputPrefix=os.path.join(dataDir, "fastq", sampleName),
+                jobCode += tk.skewer(
+                    inputFastq1=sample.fastq1 if sample.paired else sample.fastq,
+                    inputFastq2=sample.fastq2 if sample.paired else None,
+                    outputPrefix=os.path.join(prj.dirs.fastq, sample.sampleName),
                     cpus=args.cpus,
-                    adapters=adapterFasta
+                    adapters=prj.config["adapters"]
                 )
                 # move files to have common name
-                if not PE:
-                    jobCode += moveFile(
-                        os.path.join(dataDir, "fastq", sampleName + "-trimmed.fastq"),
-                        os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq")
+                if not sample.paired:
+                    jobCode += tk.moveFile(
+                        os.path.join(prj.dirs.fastq, sample.sampleName + "-trimmed.fastq"),
+                        sample.trimmed
                     )
-                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"))
+                    tempFiles.append(sample.trimmed)
                 else:
-                    jobCode += moveFile(
-                        os.path.join(dataDir, "fastq", sampleName + "-trimmed-pair1.fastq"),
-                        os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq")
+                    jobCode += tk.moveFile(
+                        os.path.join(prj.dirs.fastq, sample.sampleName + "-trimmed-pair1.fastq"),
+                        sample.trimmed1
                     )
-                    jobCode += moveFile(
-                        os.path.join(dataDir, "fastq", sampleName + "-trimmed-pair2.fastq"),
-                        os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq")
+                    jobCode += tk.moveFile(
+                        os.path.join(prj.dirs.fastq, sample.sampleName + "-trimmed-pair2.fastq"),
+                        sample.trimmed2
                     )
-                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq"))
-                    tempFiles.append(os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq"))
+                    tempFiles.append(sample.trimmed1)
+                    tempFiles.append(sample.trimmed2)
                 # move log to results dir
-                jobCode += moveFile(
-                    os.path.join(dataDir, "fastq", sampleName + "-trimmed.log"),
-                    os.path.join(resultsDir, sampleName + ".trimlog.txt")
+                jobCode += tk.moveFile(
+                    os.path.join(prj.dirs.fastq, sample.sampleName + "-trimmed.log"),
+                    sample.trimlog
                 )
 
         if args.stage in ["all", "mapping"]:
-            if samplesMerged["genome"][sample] not in genomeIndexes:
-                logger.error("Sample %s has unsuported genome index: %s" % (sampleName, samplesMerged["genome"][sample]))
-                sys.exit(1)
-
-            jobCode += bowtie2Map(
-                inputFastq1=os.path.join(dataDir, "fastq", sampleName + ".1.trimmed.fastq") if PE else os.path.join(dataDir, "fastq", sampleName + ".trimmed.fastq"),
-                inputFastq2=os.path.join(dataDir, "fastq", sampleName + ".2.trimmed.fastq") if PE else None,
-                outputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
-                log=os.path.join(resultsDir, sampleName + ".alnRates.txt"),
-                genomeIndex=genomeIndexes[samplesMerged["genome"][sample]],
+            jobCode += tk.bowtie2Map(
+                inputFastq1=sample.trimmed1 if sample.paired else sample.trimmed,
+                inputFastq2=sample.trimmed1 if sample.paired else None,
+                outputBam=sample.mapped,
+                log=sample.alnRates,
+                metrics=sample.alnMetrics,
+                genomeIndex=prj.config["annotations"]["genomes"][sample.genome],
                 maxInsert=args.maxinsert,
                 cpus=args.cpus
             )
-            tempFiles.append(os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"))
-        if args.stage in ["all", "shiftreads"]:
-            if tagmented:
-                jobCode += shiftReads(
-                    inputBam=os.path.join(dataDir, "mapped", sampleName + ".trimmed.bowtie2.bam"),
-                    genome=samplesMerged["genome"][sample],
-                    outputBam=bam + ".bam"
-                )
+            tempFiles.append(sample.mapped)
         if args.stage in ["all", "markduplicates"]:
-            jobCode += markDuplicates(
-                inputBam=bam + ".bam",
-                outputBam=bam + ".dups.bam",
-                metricsFile=os.path.join(resultsDir, sampleName + ".duplicates.txt")  #
-                # tempDir=
+            jobCode += tk.markDuplicates(
+                inputBam=sample.mapped,
+                outputBam=sample.dups,
+                metricsFile=sample.dupsMetrics
             )
         if args.stage in ["all", "removeduplicates"]:
-            jobCode += removeDuplicates(
-                inputBam=bam + ".dups.bam",
-                outputBam=bam + ".nodups.bam",
+            jobCode += tk.removeDuplicates(
+                inputBam=sample.dups,
+                outputBam=sample.nodups,
                 cpus=args.cpus
             )
+        if args.stage in ["all", "shiftreads"]:
+            if sample.tagmented:
+                jobCode += tk.shiftReads(
+                    inputBam=sample.dups,
+                    genome=sample.genome,
+                    outputBam=sample.dupsshifted
+                )
+                jobCode += tk.shiftReads(
+                    inputBam=sample.nodups,
+                    genome=sample.genome,
+                    outputBam=sample.nodupsshifted
+                )
         if args.stage in ["all", "indexbam"]:
-            jobCode += indexBam(
-                inputBam=bam + ".dups.bam"
-            )
-            jobCode += indexBam(
-                inputBam=bam + ".nodups.bam"
-            )
+            for s in [sample.dups, sample.nodups, sample.dupsshifted, sample.nodupsshifted]:
+                jobCode += tk.indexBam(inputBam=s)
+
         if args.stage in ["all", "maketracks"]:
-            # right now tracks are only made for bams with duplicates
-            jobCode += bamToUCSC(
-                inputBam=bam + ".dups.bam",
-                outputBigWig=os.path.join(htmlDir, sampleName + ".bigWig"),
-                genomeSizes=genomeSizes[samplesMerged["genome"][sample]],
-                genome=samplesMerged["genome"][sample],
-                tagmented=False
+            # right now tracks are only made for bams without duplicates
+            jobCode += tk.bamToUCSC(
+                inputBam=sample.nodups,
+                outputBigWig=sample.bigwig,
+                genomeSizes=prj.config["annotations"]["genomeSizes"][sample.genome],
+                genome=sample.genome,
+                tagmented=sample.tagmented
             )
-            jobCode += addTrackToHub(
-                sampleName=sampleName,
-                trackURL=urlRoot + sampleName + ".bigWig",
-                trackHub=os.path.join(htmlDir, "trackHub_{0}.txt".format(samplesMerged["genome"][sample])),
-                colour=colour
+            jobCode += tk.addTrackToHub(
+                sampleName=sample.sampleName,
+                trackURL=sample.trackURL,
+                trackHub=os.path.join(prj.dirs.htmlDir, "trackHub_{0}.txt".format(sample.genome)),
+                colour=sample.trackColour
             )
-            if tagmented:
-                jobCode += bamToUCSC(
-                    inputBam=bam + ".dups.bam",
-                    outputBigWig=os.path.join(htmlDir, sampleName + ".5prime.bigWig"),
-                    genomeSizes=genomeSizes[samplesMerged["genome"][sample]],
-                    genome=samplesMerged["genome"][sample],
-                    tagmented=True
-                )
-                jobCode += addTrackToHub(
-                    sampleName=sampleName,
-                    trackURL=urlRoot + sampleName + ".5prime.bigWig",
-                    trackHub=os.path.join(htmlDir, "trackHub_{0}.txt".format(samplesMerged["genome"][sample])),
-                    fivePrime="5prime",
-                    colour=colour
-                )
-            linkToTrackHub(
-                trackHubURL="{0}/{1}/bigWig/trackHub_{2}.txt".format(args.url_root, args.project_name, samplesMerged["genome"][sample]),
-                fileName=os.path.join(projectDir, "ucsc_tracks_{0}.html".format(samplesMerged["genome"][sample])),
-                genome=samplesMerged["genome"][sample]
+            tk.linkToTrackHub(
+                trackHubURL=os.path.join(prj.dirs.htmlDir, "trackHub_{0}.txt".format(sample.genome)),
+                fileName=os.path.join(prj.dirs.root, "ucsc_tracks_{0}.html".format(sample.genome)),
+                genome=sample.genome
             )
         if args.stage in ["all", "coverage"]:
-            jobCode += genomeWideCoverage(
-                inputBam=bam + ".nodups.bam",
-                genomeWindows=genomeWindows[samplesMerged["genome"][sample]],
-                output=os.path.join(dataDir, "coverage", sampleName + ".cov")
+            jobCode += tk.genomeWideCoverage(
+                inputBam=sample.nodups,
+                genomeWindows=prj.config["annotations"]["genomewindows"][sample.genome],
+                output=sample.coverage
             )
-
-        # if args.stage in ["all", "qc"]:
-        #     if tagmented:
-        #         jobCode += qc()
-        #     else:
-        #         jobCode += qc()
 
         # Remove intermediary files
         if args.stage == "all" and not args.keep_tmp:
-            logger.debug("Removing intermediary files")
+            prj.logger.debug("Removing intermediary files")
             for fileName in tempFiles:
-                jobCode += removeFile(fileName)
+                jobCode += tk.removeFile(fileName)
 
         # Submit job to slurm
         # Get concatenated string with code from all modules
-        jobCode += slurmFooter()
+        jobCode += tk.slurmFooter()
 
         # Output file name
-        jobFile = os.path.join(projectDir, "runs", jobName + ".sh")
-
+        jobFile = os.path.join(prj.dirs.executables, jobName + ".sh")
         with open(jobFile, 'w') as handle:
             handle.write(textwrap.dedent(jobCode))
 
         # Submit to slurm
         if not args.dry_run:
-            logger.info("Submitting job to slurm: %s" % jobName)
-            status = slurmSubmitJob(jobFile)
+            prj.logger.info("Submitting job to slurm: %s" % jobName)
+            status = tk.slurmSubmitJob(jobFile)
 
             if status != 0:
-                logger.error("Slurm job '%s' not successfull" % jobFile)
+                prj.logger.error("Slurm job '%s' not successfull" % jobFile)
                 sys.exit(1)
-            logger.debug("Project '%s'submission finished successfully." % args.project_name)
-
-        #  Write location of bam file in merged samples annotation sheet
-        samplesMerged['filePath'][sample] = bam + ".dups.bam"
+            prj.logger.debug("Project '%s'submission finished successfully." % args.project_name)
 
     # write original annotation sheet to project folder
-    samples.to_csv(os.path.join(projectDir, args.project_name + ".annotation_sheet.csv"), index=False)
-    # write annotation sheet with biological replicates to project folder
-    samplesMerged.to_csv(
-        os.path.join(projectDir, args.project_name + ".replicates.annotation_sheet.csv"),
-        index=False
-    )
+    # add field for manual sample-control pairing
+    prj.sheet.df.controlSampleName = None
+    prj.sheet.to_csv(os.path.join(prj.dirs.root, prj.name, ".annotation_sheet.csv"))
 
-    logger.debug("Finished preprocessing")
-
-    return (logger,
-            os.path.join(os.getcwd(), args.project_name + ".log"),
-            os.path.join(projectDir, "runs", args.project_name + ".log"))
+    prj.logger.debug("Finished preprocessing")
 
 
-def readStats(args, logger):
+def readStats(args, prj):
     """
     Given an annotation sheet with replicates, gets number of reads mapped, duplicates, etc...
     """
 
-    logger.info("Starting sample read stats.")
+    prj.logger.info("Starting sample read stats.")
 
-    logger.debug("Checking project directories exist and creating if not.")
-    htmlDir, projectDir, dataDir, resultsDir, urlRoot = checkProjectDirs(args, logger)
+    cols = ["readCount", "unpaired", "unaligned", "unique", "multiple", "alignmentRate"]
 
-    # Parse sample information
-    args.csv = os.path.abspath(args.csv)
-
-    # check if exists and is a file
-    if not os.path.isfile(args.csv):
-        logger.error("Sample annotation '%s' does not exist, or user has no read access." % args.csv)
-        sys.exit(1)
-
-    # read in
-    samples = pd.read_csv(args.csv)
-
-    variables = ["cellLine", "numberCells", "technique", "ip", "patient",
-                 "treatment", "biologicalReplicate", "technicalReplicate", "genome"]
-
-    cols = ["unpairedReadsExamined", "readPairsExamined", "unmappedReads", "unpairedReadDuplicates",
-            "readPairDuplicates", "readPairOpticalDuplicates", "percentDuplication", "estimatedLibrarySize"]
-    samples["totalReads"] = None
-    for col in cols:
-        samples[col] = None
-
-    if "peakFile" in samples.columns:
-        samples["peakNumber"] = None
-
-    for sample in xrange(len(samples)):
-        # Sample name
-        # if sampleName is not provided, use a concatenation of several variable (excluding longest)
-        if str(samples["sampleName"][sample]) != "nan":
-            sampleName = samples["sampleName"][sample]
-        else:
-            sampleName = string.join([str(samples[var][sample]) for var in variables], sep="_")
-            logger.debug("No sample name provided, using concatenation of variables supplied")
-
+    for sample in prj.samples:
         # Get alignment stats
         try:
-            # read in
-            reads = pd.read_csv(
-                os.path.join(resultsDir, sampleName + ".alnRates.txt"),
-                sep="\t"
-            )
-            # add to dataFrame
-            samples.loc[sample, "totalReads"] = reads.loc[0, 'Read']
+            sample.alnStats = parseBowtieStats(sample.alnRates)
         except:
-            logger.warn("Record with duplicates is empty or not found for sample %s" % sampleName)
+            prj.logger.warn("Record with alignment rates is empty or not found for sample %s" % sample.sampleName)
             pass
 
         # Get duplicate stats
         try:
-            dups = pd.read_csv(
-                os.path.join(resultsDir, sampleName + ".duplicates.txt"),
-                sep="\t",
-                comment="#",
-                header=1
-            )
+            dups = pd.read_csv(sample.dupsMetrics, sep="\t", comment="#", header=0)
             # drop if empty
             dups.dropna(thresh=len(dups.columns) - 1, inplace=True)
 
             # Add values to sample sheet
             for col in range(len(cols)):
-                samples.loc[sample, cols[col]] = dups.drop(["LIBRARY"], axis=1).ix[0][col]
+                sample.append(dups.drop(["LIBRARY"], axis=1).ix[0][col])
         except:
-            logger.warn("Record with duplicates is empty or not found for sample %s" % sampleName)
+            prj.logger.warn("Record with duplicates is empty or not found for sample %s" % sample.sampleName)
             pass
 
-        # Count peak number (if peaks in sheet)
-        if "peakFile" in samples.columns:
-            # and if sample has peaks
-            if str(samples["peakFile"][sample]) != "nan":
-                proc = subprocess.Popen(["wc", "-l", samples["peakFile"][sample]], stdout=subprocess.PIPE)
-                out, err = proc.communicate()
-                samples.loc[sample, "peakNumber"] = re.sub("\D.*", "", out)
+        # Get NSC and RSC
+        qcFile = os.path.join(prj.dirs.results, "sample_QC.tsv")
+        qc = parseQC(sample.sampleName, qcFile)
+        sample["NSC"] = qc["NSC"]
+        sample["RSC"] = qc["RSC"]
+        sample["qualityTag"] = qc["qualityTag"]
 
-    # convert duplicates to percentage
+        # Count peak number (if peaks exist)
+        if hasattr(sample, "peaks"):
+            # and if sample has peaks
+            if str(sample.peaks) != "nan":
+                proc = subprocess.Popen(["wc", "-l", sample.peaks], stdout=subprocess.PIPE)
+                out, err = proc.communicate()
+                sample["peakNumber"] = re.sub("\D.*", "", out)
+
+        # Get FRiP from file (if exists) and add to sheet
+        if hasattr(sample, "peaks"):
+            # if sample has peaks
+            if str(sample.peaks) != "nan":
+                try:
+                    with open(sample.frip, "r") as handle:
+                        content = handle.readlines()
+
+                    readsInPeaks = int(re.sub("\D", "", content[0]))
+                    mappedReads = sample.readCount - sample.unaligned
+
+                    sample["FRiP"] = readsInPeaks / mappedReads
+                except:
+                    prj.logger.warn("Record with FRiP value is empty or not found for sample %s" % sample.sampleName)
+                    pass
+
+    samples = pd.DataFrame(prj.samples)
+    # convert duplicate rate to percentage
     samples.loc[:, 'percentDuplication'] = samples['percentDuplication'] * 100
 
     # write annotation sheet with biological replicates
-    samples.to_csv(os.path.join(projectDir, args.project_name + ".read_stats.csv"), index=False)
+    samples.to_csv(prj.sampleStats, index=False)
 
-    logger.debug("Finished getting read statistics.")
-
-    return (logger,
-            os.path.join(os.getcwd(), args.project_name + ".log"),
-            os.path.join(projectDir, "runs", args.project_name + ".log"))
+    prj.logger.debug("Finished getting read statistics.")
 
 
-def analyse(args, logger):
-    logger.info("Starting sample analysis.")
-
-    logger.debug("Checking project directories exist and creating if not.")
-    htmlDir, projectDir, dataDir, resultsDir, urlRoot = checkProjectDirs(args, logger)
-
-    # Paths to static files on the cluster
-
-    # Other static info
-    tagment = [
-        "DNASE", "DNASESEQ", "DNASE-SEQ", "DHS", "DHS-SEQ", "DHSSEQ",
-        "ATAC", "ATAC-SEQ", "ATACSEQ",
-        "CM"
-    ]
-    histones = ["H2A", "H2B", "H3", "H4"]
-    broadFactors = [
-        "H3K27ME1", "H3K27ME2", "H3K27ME3",
-        "H3K36ME1", "H3K36ME2", "H3K36ME3",
-        "H3K9ME1", "H3K9ME2", "H3K9ME3",
-        "H3K72ME1", "H3K72ME2", "H3K72ME3"
-    ]
-
-    tssFiles = {
-        "hg19": "/fhgfs/groups/lab_bock/arendeiro/share/GRCh37_hg19_refSeq.tss.bed",
-        "mm10": "/fhgfs/groups/lab_bock/arendeiro/share/GRCm38_mm10_refSeq.tss.bed",
-        "dr7": "/fhgfs/groups/lab_bock/arendeiro/share/GRCh37_hg19_refSeq.tss.bed"
-    }
-
-    # Parse sample information
-    args.csv = os.path.abspath(args.csv)
-
-    # check if exists and is a file
-    if not os.path.isfile(args.csv):
-        logger.error("Sample annotation '%s' does not exist, or user has no read access." % args.csv)
-        sys.exit(1)
-
-    # read in
-    samples = pd.read_csv(args.csv)
-    samples["controlSampleFilePath"] = None
-    samples["peakFile"] = None
-
-    # TODO:
-    # Perform checks on the variables given
-    # (e.g. columns existing, bams existing)
-
-    # start pipeline
-    projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
-
-    # Preprocess samples
-    variables = ["cellLine", "numberCells", "technique", "ip", "patient",
-                 "treatment", "biologicalReplicate", "technicalReplicate", "genome"]
+def analyse(args, prj):
+    """
+    Perform ChIP-seq QC, call peaks, perform de novo motif discovery,
+    plot signal around called peaks and TSSs.
+    """
+    prj.logger.info("Starting sample analysis.")
 
     # track jobs to submit
     jobs = dict()
 
-    for sample in xrange(len(samples)):
-        # Sample name
-        # if sampleName is not provided, use a concatenation of several variable (excluding longest)
-        if str(samples["sampleName"][sample]) != "nan":
-            sampleName = samples["sampleName"][sample]
-        else:
-            sampleName = string.join([str(samples[var][sample]) for var in variables], sep="_")
-            logger.debug("No sample name provided, using concatenation of variables supplied")
+    runName = "_".join([prj.name, "analyse", time.strftime("%Y%m%d-%H%M%S")])
 
-        # Pair with control
-        control = False
-        # get file path of sample which this sample's controlName is pointing to
-        ctrlField = samples[samples['sampleName'].isin([samples['controlSampleName'][sample]])]['filePath']
-        # ^^ doesn't mean it has something (i.e. is empty if no control sample is indicated)
-
-        # if there is only one record, use that as control
-        if len(ctrlField) == 1 and type(ctrlField.values[0]) == str:
-            control = True
-            controlName = samples.ix[sample]["controlSampleName"]
-            controlBam = os.path.abspath(ctrlField.values[0])
-            samples["controlSampleFilePath"][sample] = controlBam
-
-        # skip samples without matched control
-        if not control:
+    for sample in prj.samples:
+        # Skip samples without paired control
+        if not hasattr(sample, "controlSampleName"):
+            continue
+        if type(sample.controlSampleName) != str:
             continue
 
-        # check if sample is tagmented or not:
-        tagmented = True if samples["technique"][sample] in tagment else False
+        # Assign the sample with that name to ctrl
+        ctrl = [s for s in prj.samples if s.sampleName == sample.controlSampleName]
+        # if there is only one record, use that as control
+        if len(ctrl) == 1:
+            ctrl = ctrl[0]
+        else:
+            continue
 
-        # Is it a histone?
-        histone = True if any([i in samples["ip"][sample] for i in histones]) else False
-
-        # Is it a broad factor?
-        broad = False if samples["ip"][sample].upper() not in broadFactors else True
-
-        # peakFile
-        peakFile = os.path.join(
-            dataDir, "peaks", sampleName,
-            sampleName + "_peaks" + (".narrowPeak" if not broad else ".broadPeak")
-        )
-        samples["peakFile"][sample] = peakFile
-
-        jobName = projectName + "_" + sampleName
-
-        tempFiles = list()
+        jobName = "_".join([runName, sample.sampleName])
 
         # assemble commands
-        jobCode = slurmHeader(
+        jobCode = tk.slurmHeader(
             jobName=jobName,
-            output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
+            output=os.path.join(prj.dirs.logs, jobName + ".slurm.log"),
             queue=args.queue,
             time=args.time,
             cpusPerTask=args.cpus,
             memPerCpu=args.mem,
             userMail=args.user_mail
         )
-        if args.stage in ["all", "callpeaks"] and control:
+        if args.stage in ["all", "qc"]:
+            jobCode += tk.peakTools(
+                inputBam=sample.nodups,
+                output=os.path.join(prj.dirs.qc, "sample_QC.tsv"),
+                plot=os.path.join(prj.dirs.qc, sample.sampleName + "_QC.pdf"),
+                cpus=args.cpus
+            )
+        if args.stage in ["all", "callpeaks"]:
             if args.peak_caller == "macs2":
                 # make dir for output
-                if not os.path.exists(os.path.join(dataDir, "peaks", sampleName)):
-                    os.makedirs(os.path.join(dataDir, "peaks", sampleName))
+                if not os.path.exists(os.path.join(prj.dirs.peaks, sample.sampleName)):
+                    os.makedirs(os.path.join(prj.dirs.peaks, sample.sampleName))
 
                 # For point-source factors use default settings
                 # For broad factors use broad settings
-                jobCode += macs2CallPeaks(
-                    treatmentBam=os.path.abspath(samples['filePath'][sample]),
-                    controlBam=controlBam,
-                    outputDir=os.path.join(dataDir, "peaks", sampleName),
-                    sampleName=sampleName,
-                    genome=samples['genome'][sample],
-                    broad=True if broad else False
+                jobCode += tk.macs2CallPeaks(
+                    treatmentBam=sample.nodups,
+                    controlBam=ctrl.nodups,
+                    outputDir=os.path.join(prj.dirs.peaks, sample.sampleName),
+                    sampleName=sample.sampleName,
+                    genome=sample.genome,
+                    broad=True if sample.broad else False
                 )
             elif args.peak_caller == "spp":
                 # For point-source factors use default settings
                 # For broad factors use broad settings
-                jobCode += sppCallPeaks(
-                    treatmentBam=os.path.abspath(samples['filePath'][sample]),
-                    controlBam=controlBam,
-                    treatmentName=sampleName,
-                    controlName=controlName,
-                    outputDir=os.path.join(dataDir, "peaks", sampleName),
-                    broad=True if broad else False,
+                jobCode += tk.sppCallPeaks(
+                    treatmentBam=sample.nodups,
+                    controlBam=ctrl.nodups,
+                    treatmentName=sample.sampleName,
+                    controlName=ctrl.sampleName,
+                    outputDir=os.path.join(prj.dirs.peaks, sample.sampleName),
+                    broad=True if sample.broad else False,
                     cpus=args.cpus
                 )
-
-        if args.stage in ["all", "findmotifs"] and control:
-            # make dir for motifs
-            if not os.path.exists(os.path.join(dataDir, "motifs", sampleName)):
-                    os.makedirs(os.path.join(dataDir, "motifs", sampleName))
-
-            if not histone:
+            elif args.peak_caller == "zinba":
+                raise NotImplementedError("Calling peaks with Zinba is not yet implemented.")
+                # jobCode += tk.bamToBed(
+                #     inputBam=sample.nodups,
+                #     outputBed=os.path.join(prj.dirs.peaks, sample.sampleName + ".bed"),
+                # )
+                # jobCode += tk.bamToBed(
+                #     inputBam=ctrl.nodups,
+                #     outputBed=os.path.join(prj.dirs.peaks, control.sampleName + ".bed"),
+                # )
+                # jobCode += tk.zinbaCallPeaks(
+                #     treatmentBed=os.path.join(prj.dirs.peaks, sample.sampleName + ".bed"),
+                #     controlBed=os.path.join(prj.dirs.peaks, control.sampleName + ".bed"),
+                #     tagmented=sample.tagmented,
+                #     cpus=args.cpus
+                # )
+        if args.stage in ["all", "findmotifs"]:
+            if not sample.histone:
                 # For TFs, find the "self" motif
-                jobCode += homerFindMotifs(
-                    peakFile=peakFile,
-                    genome=samples["genome"][sample],
-                    outputDir=os.path.join(dataDir, "motifs", sampleName),
+                jobCode += tk.homerFindMotifs(
+                    peakFile=sample.peaks,
+                    genome=sample.genome,
+                    outputDir=sample.motifsDir,
                     size="50",
                     length="8,10,12,14,16",
                     n_motifs=8
                 )
                 # For TFs, find co-binding motifs (broader region)
-                jobCode += homerFindMotifs(
-                    peakFile=peakFile,
-                    genome=samples["genome"][sample],
-                    outputDir=os.path.join(dataDir, "motifs", sampleName + "_cobinders"),
+                jobCode += tk.homerFindMotifs(
+                    peakFile=sample.peaks,
+                    genome=sample.genome,
+                    outputDir=sample.motifsDir + "_cobinders",
                     size="200",
                     length="8,10,12,14,16",
                     n_motifs=12
                 )
             else:
                 # For histones, use a broader region to find motifs
-                jobCode += homerFindMotifs(
-                    peakFile=peakFile,
-                    genome=samples["genome"][sample],
-                    outputDir=os.path.join(dataDir, "motifs", sampleName),
+                jobCode += tk.homerFindMotifs(
+                    peakFile=sample.peaks,
+                    genome=sample.genome,
+                    outputDir=sample.motifsDir,
                     size="1000",
                     length="8,10,12,14,16",
                     n_motifs=20
                 )
 
-        if args.stage in ["all", "centerpeaks"] and control:
+        if args.stage in ["all", "centerpeaks"]:
             # TODO:
             # right now this assumes peaks were called with MACS2
             # figure a way of magetting the peak files withough using the peak_caller option
             # for that would imply taht option would be required when selecting this stage
-            jobCode += centerPeaksOnMotifs(
-                peakFile=peakFile,
-                genome=samples["genome"][sample],
-                windowWidth=args.peak_window_width,
-                motifFile=os.path.join(dataDir, "motifs", sampleName, "homerResults", "motif1.motif"),
-                outputBed=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifCentered.bed")
+            jobCode += tk.centerPeaksOnMotifs(
+                peakFile=sample.peaks,
+                genome=sample.genome,
+                windowWidth=prj.config["options"]["peakwindowwidth"],
+                motifFile=os.path.join(sample.motifsDir, "homerResults", "motif1.motif"),
+                outputBed=sample.peaksMotifCentered
             )
-
-        if args.stage in ["all", "annotatepeaks"] and control:
+        if args.stage in ["all", "annotatepeaks"]:
             # TODO:
             # right now this assumes peaks were called with MACS2
             # figure a way of getting the peak files withough using the peak_caller option
             # for that would imply taht option would be required when selecting this stage
-            jobCode += AnnotatePeaks(
-                peakFile=peakFile,
-                genome=samples["genome"][sample],
-                motifFile=os.path.join(dataDir, "motifs", sampleName, "homerResults", "motif1.motif"),
-                outputBed=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifAnnotated.bed")
+            jobCode += tk.AnnotatePeaks(
+                peakFile=sample.peaks,
+                genome=sample.genome,
+                motifFile=os.path.join(sample.motifsDir, "homerResults", "motif1.motif"),
+                outputBed=sample.peaksMotifAnnotated
             )
-
-        if args.stage in ["all", "peakanalysis"] and control:
-            jobCode += peakAnalysis(
-                inputBam=os.path.abspath(samples.ix[sample]['filePath']),
-                peakFile=os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifCentered.bed"),
-                plotsDir=os.path.join(resultsDir, 'plots'),
-                windowWidth=2000,
-                fragmentsize=1 if tagmented else 50,  # change this to actual read length
-                genome=samples.ix[sample]['genome'],
+        if args.stage in ["all", "peakanalysis"]:
+            jobCode += tk.peakAnalysis(
+                inputBam=sample.nodups,
+                peakFile=sample.peaksMotifCentered,
+                plotsDir=os.path.join(prj.dirs.results, 'plots'),
+                windowWidth=prj.config["options"]["peakwindowwidth"],
+                fragmentsize=1 if sample.tagmented else sample.readLength,
+                genome=sample.genome,
                 n_clusters=5,
                 strand_specific=True,
                 duplicates=True
             )
-
-        if args.stage in ["all", "tssanalysis"] and control:
-            jobCode += tssAnalysis(
-                inputBam=os.path.abspath(samples.ix[sample]['filePath']),
-                tssFile=tssFiles[samples.ix[sample]['genome']],
-                plotsDir=os.path.join(resultsDir, 'plots'),
-                windowWidth=2000,
-                fragmentsize=1 if tagmented else 50,  # change this to actual read length
-                genome=samples.ix[sample]['genome'],
+        if args.stage in ["all", "tssanalysis"]:
+            jobCode += tk.tssAnalysis(
+                inputBam=sample.nodups,
+                tssFile=prj.config["annotations"]["tss"][sample.genome],
+                plotsDir=os.path.join(prj.dirs.results, 'plots'),
+                windowWidth=prj.config["options"]["peakwindowwidth"],
+                fragmentsize=1 if sample.tagmented else sample.readLength,
+                genome=sample.genome,
                 n_clusters=5,
                 strand_specific=True,
                 duplicates=True
             )
+        if args.stage in ["all", "frip"]:
+            jobCode += tk.calculateFRiP(
+                inputBam=sample.nodups,
+                inputBed=sample.peaks,
+                output=sample.frip
+            )
 
-        # if args.stage in ["all", "footprints"] and control and tagmented:
-        #     jobCode += footprintAnalysis(
-        #         os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifCentered.bed"),
-        #         os.path.join(dataDir, "peaks", sampleName, sampleName + "_peaks.motifAnnotated.bed")
+        # if args.stage in ["all", "footprints"] and control and sample.tagmented:
+        #     jobCode += tk.footprintAnalysis(
+        #         prj.dirs.peaks, sampleName, sampleName + "_peaks.motifCentered.bed"),
+        #         prj.dirs.peaks, sampleName, sampleName + "_peaks.motifAnnotated.bed")
         #     )
 
         # finish job
-        jobCode += slurmFooter()
+        jobCode += tk.slurmFooter()
         jobs[jobName] = jobCode
 
     # Submit jobs to slurm
     for jobName, jobCode in jobs.items():
         # Output file name
-        jobFile = os.path.join(projectDir, "runs", jobName + ".sh")
+        jobFile = os.path.join(prj.dirs.executables, jobName + ".sh")
 
         with open(jobFile, 'w') as handle:
             handle.write(textwrap.dedent(jobCode))
 
         # Submit to slurm
         if not args.dry_run:
-            logger.info("Submitting jobs to slurm")
-            status = slurmSubmitJob(jobFile)
+            prj.logger.info("Submitting jobs to slurm")
+            status = tk.slurmSubmitJob(jobFile)
 
             if status != 0:
-                logger.error("Slurm job '%s' not successfull" % jobFile)
+                prj.logger.error("Slurm job '%s' not successfull" % jobFile)
                 sys.exit(1)
-            logger.debug("Project '%s'submission finished successfully." % args.project_name)
+            prj.logger.debug("Project '%s'submission finished successfully." % args.project_name)
 
     # write original annotation sheet to project folder
-    samples.to_csv(
-        os.path.join(projectDir, args.project_name + ".replicates.annotation_sheet.csv"),
-        index=False
-    )
+    prj.sheet.to_csv(os.path.join(prj.dirs.root, prj.name, ".annotation_sheet.csv"))
 
-    logger.debug("Finished comparison")
-
-    return (logger,
-            os.path.join(os.getcwd(), args.project_name + ".log"),
-            os.path.join(projectDir, "runs", args.project_name + ".log"))
+    prj.logger.debug("Finished comparison")
 
 
-def compare(args, logger):
-    logger.info("Starting sample comparison.")
-
-    logger.debug("Checking project directories exist and creating if not.")
-    htmlDir, projectDir, dataDir, resultsDir, urlRoot = checkProjectDirs(args, logger)
-
-    # Paths to static files on the cluster
-
-    # Other static info
-
-    # Parse sample information
-    args.csv = os.path.abspath(args.csv)
-
-    # check if exists and is a file
-    if not os.path.isfile(args.csv):
-        logger.error("Sample annotation '%s' does not exist, or user has no read access." % args.csv)
-        sys.exit(1)
-
-    # read in
-    samples = pd.read_csv(args.csv)
-
-    # TODO:
-    # Perform checks on the variables given
-    # (e.g. columns existing, bams/peaks existing)
+def compare(args, prj):
+    prj.logger.info("Starting sample comparison.")
 
     # start pipeline
-    projectName = string.join([args.project_name, time.strftime("%Y%m%d-%H%M%S")], sep="_")
+    runName = "_".join([prj.name, "compare", time.strftime("%Y%m%d-%H%M%S")])
+
+    samples = prj.sheet.df
 
     # track jobs to submit
     jobs = dict()
@@ -1320,33 +751,34 @@ def compare(args, logger):
                 if IP.upper() in ["INPUT", "IGG"]:  # skip groups with control
                     continue
 
-                jobName = projectName + "_" + "diffBind_{0}_{1}".format(genome, IP)
-                diffBindSheetFile = os.path.join(projectDir, "runs", jobName + ".csv")
+                jobName = runName + "_" + "diffBind_{0}_{1}".format(genome, IP)
 
                 # make diffBind csv file, save it
                 empty = makeDiffBindSheet(
-                    samples, samples.ix[IP_groups[IP]], os.path.join(dataDir, "peaks"),
-                    diffBindSheetFile
+                    samples=samples,
+                    df=samples.ix[IP_groups[IP]],
+                    peaksDir=prj.dirs.peaks,
+                    sheetFile=prj.diffBindCSV
                 )
                 # ^^ returns Bool for empty diffBind sheet
 
                 if not empty:
                     # create job
-                    jobCode = slurmHeader(
+                    jobCode = tk.slurmHeader(
                         jobName=jobName,
-                        output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
+                        output=os.path.join(prj.dirs.logs, jobName + ".slurm.log"),
                         queue=args.queue,
                         time=args.time,
                         cpusPerTask=args.cpus,
                         memPerCpu=args.mem,
                         userMail=args.user_mail
                     )
-                    jobCode += diffBind(
-                        inputCSV=diffBindSheetFile,
+                    jobCode += tk.diffBind(
+                        inputCSV=prj.diffBindCSV,
                         jobName=jobName,
-                        plotsDir=os.path.join(resultsDir, 'plots')
+                        plotsDir=os.path.join(prj.dirs.results, 'plots')
                     )
-                    jobCode += slurmFooter()
+                    jobCode += tk.slurmFooter()
                     jobs[jobName] = jobCode
 
     # Submit job for all samples together (per genome)
@@ -1355,50 +787,157 @@ def compare(args, logger):
         genome_groups = samples.groupby(["genome"]).groups
 
         for genome in genome_groups.keys():
-            jobName = projectName + "_" + genome + "_sample_correlations"
+            jobName = runName + "_" + genome + "_sample_correlations"
 
             # Separate comparison per IPed factor
             df = samples.ix[genome_groups[genome]]
 
-            jobCode = slurmHeader(
+            jobCode = tk.slurmHeader(
                 jobName=jobName,
-                output=os.path.join(projectDir, "runs", jobName + ".slurm.log"),
+                output=os.path.join(prj.dirs.logs, jobName + ".slurm.log"),
                 queue=args.queue,
                 time=args.time,
                 cpusPerTask=args.cpus,
                 memPerCpu=args.mem,
                 userMail=args.user_mail
             )
-            jobCode += plotCorrelations(
-                inputCoverage=[os.path.join(dataDir, "coverage", sampleName + ".cov") for sampleName in list(df['sampleName'])],
-                plotsDir=os.path.join(resultsDir, 'plots')
+            jobCode += tk.plotCorrelations(
+                inputCoverage=[sample.coverage for sample in prj.samples],
+                plotsDir=os.path.join(prj.dirs.results, 'plots')
             )
-            jobCode += slurmFooter()
+            jobCode += tk.slurmFooter()
             jobs[jobName] = jobCode
 
     # Submit jobs to slurm
     for jobName, jobCode in jobs.items():
         # Output file name
-        jobFile = os.path.join(projectDir, "runs", jobName + ".sh")
+        jobFile = os.path.join(prj.dirs.executables, jobName + ".sh")
 
         with open(jobFile, 'w') as handle:
             handle.write(textwrap.dedent(jobCode))
 
         # Submit to slurm
         if not args.dry_run:
-            logger.info("Submitting jobs to slurm")
-            status = slurmSubmitJob(jobFile)
+            prj.logger.info("Submitting jobs to slurm")
+            status = tk.slurmSubmitJob(jobFile)
 
             if status != 0:
-                logger.error("Slurm job '%s' not successfull" % jobFile)
+                prj.logger.error("Slurm job '%s' not successfull" % jobFile)
                 sys.exit(1)
-            logger.debug("Project '%s'submission finished successfully." % args.project_name)
+            prj.logger.debug("Project '%s'submission finished successfully." % args.project_name)
 
-    logger.debug("Finished comparison")
+    prj.logger.debug("Finished comparison")
 
-    return (logger,
-            os.path.join(os.getcwd(), args.project_name + ".log"),
-            os.path.join(projectDir, "runs", args.project_name + ".log"))
+
+def getReadType(bamFile, n=10):
+    """
+    Gets the read type (single, paired) and length of bam file.
+    Returns tuple of (readType=string, readLength=int).
+    """
+    from collections import Counter
+    p = subprocess.Popen(['samtools', 'view', bamFile], stdout=subprocess.PIPE)
+
+    # Count paired alignments
+    paired = 0
+    readLength = Counter()
+    while n > 0:
+        line = p.stdout.next().split("\t")
+        flag = int(line[1])
+        readLength[len(line[9])] += 1
+        if 1 & flag:  # check decimal flag contains 1 (paired)
+            paired += 1
+        n -= 1
+    p.kill()
+
+    # Get most abundant read readLength
+    readLength = sorted(readLength)[-1]
+
+    # If at least half is paired, return True
+    if paired > (n / 2):
+        return ("PE", readLength)
+    else:
+        return ("SE", readLength)
+
+
+def parseBowtieStats(statsFile):
+    """
+    Parses Bowtie2 stats file, returns series with values.
+    """
+    stats = pd.Series(index=["readCount", "unpaired", "unaligned", "unique", "multiple", "alignmentRate"])
+
+    with open(statsFile) as handle:
+        content = handle.readlines()  # list of strings per line
+
+    # total reads
+    try:
+        line = [i for i in range(len(content)) if " reads; of these:" in content[i]][0]
+        stats["readCount"] = re.sub("\D.*", "", content[line])
+        if 7 > len(content) > 2:
+            line = [i for i in range(len(content)) if "were unpaired; of these:" in content[i]][0]
+            stats["unpaired"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        else:
+            line = [i for i in range(len(content)) if "were paired; of these:" in content[i]][0]
+            stats["unpaired"] = stats["readCount"] - int(re.sub("\D", "", re.sub("\(.*", "", content[line])))
+        line = [i for i in range(len(content)) if "aligned 0 times" in content[i]][0]
+        stats["unaligned"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if "aligned exactly 1 time" in content[i]][0]
+        stats["unique"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if "aligned >1 times" in content[i]][0]
+        stats["multiple"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if "overall alignment rate" in content[i]][0]
+        stats["alignmentRate"] = re.sub("\D.*", "", content[line])
+    except IndexError:
+        pass
+    return stats
+
+
+def parseMACSModel(modelFile):
+    """
+    Parses Bowtie2 stats file, returns series with values.
+    """
+    out = dict()
+
+    with open(modelFile) as handle:
+        content = handle.readlines()  # list of strings per line
+
+    try:
+        patt = re.compile("\((.+)\)")
+        line = [i for i in range(len(content)) if "p <- c(" in content[i]][0]
+        out["p"] = [float(i) for i in patt.search(content[line]).group(1).split(",")]
+        line = [i for i in range(len(content)) if "m <- c(" in content[i]][0]
+        out["m"] = [float(i) for i in patt.search(content[line]).group(1).split(",")]
+        line = [i for i in range(len(content)) if "ycorr <- c(" in content[i]][0]
+        out["ycorr"] = [float(i) for i in patt.search(content[line]).group(1).split(",")]
+        line = [i for i in range(len(content)) if "xcorr <- c(" in content[i]][0]
+        out["xcorr"] = [float(i) for i in patt.search(content[line]).group(1).split(",")]
+        line = [i for i in range(len(content)) if "altd  <- c(" in content[i]][0]
+        out["altd"] = [float(i) for i in patt.search(content[line]).group(1).split(",")]
+    except IndexError:
+        pass
+    return out
+
+
+def parseQC(sampleName, qcFile):
+    """
+    Parses QC table produced by phantompeakqualtools (spp) and adds to sample annotation sheet
+    sample quality metrics for each sample.
+    """
+    series = pd.Series(index=["NSC", "RSC", "qualityTag"])
+    try:
+        with open(qcFile) as handle:
+            content = handle.readlines()  # list of strings per line
+    except:
+        return series
+
+    try:
+        line = [i for i in range(len(content)) if str(sampleName) in content[i]][0]
+        attrs = content[line].strip().split("\t")
+        series["NSC"] = attrs[-3]
+        series["RSC"] = attrs[-2]
+        series["qualityTag"] = attrs[-1]
+    except IndexError:
+        pass
+    return series
 
 
 def makeDiffBindSheet(samples, df, peaksDir, sheetFile):
@@ -1422,7 +961,7 @@ def makeDiffBindSheet(samples, df, peaksDir, sheetFile):
     # TODO:
     # Change peak path according to narrow/broad
     df.loc[:, "Peaks"] = [os.path.join(peaksDir, sampleName, sampleName + "_peaks.narrowPeak") for sampleName in df["sampleName"]]
-    df.loc[:, "PeakCaller"] = "macs"
+    df["PeakCaller"] = "macs"
 
     # Filter columns used
     df = df[["sampleName", "cellLine", "ip", "condition", "treatment",

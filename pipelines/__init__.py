@@ -118,6 +118,7 @@ class Project(object):
         self.dirs.root = _os.path.join(self.dirs.parent, self.name)
         # Runs
         self.dirs.runs = _os.path.join(self.dirs.root, "runs")
+        self.dirs.pickles = _os.path.join(self.dirs.runs, "pickles")
         self.dirs.executables = _os.path.join(self.dirs.runs, "executables")
         self.dirs.logs = _os.path.join(self.dirs.runs, "logs")
         # Data

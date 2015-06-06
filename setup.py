@@ -16,7 +16,7 @@ setup(
     license="GPL2",
     packages=["pipelines"],
     install_requires=["numpy", "pandas"],
-    scripts=["pipelines/chipseq_pipeline"],
+    scripts=["pipelines/ngsProject", "pipelines/chipseq_pipeline"],
     include_package_data=True,
     zip_safe=False
 )

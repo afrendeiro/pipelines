@@ -10,6 +10,7 @@ import sys
 import logging
 from pipelines import Project
 from pipelines import toolkit as tk
+from pypiper import Pypiper
 import pandas as pd
 import time
 import re
@@ -36,7 +37,7 @@ def main():
 
     # Subparsers
     subparser = parser.add_subparsers(title="sub-command", dest="command")
-    subparser = mainArgParser(subparser)
+    parser = mainArgParser(parser)
     subparser = preprocessArgParser(subparser)
     subparser = analyzeArgParser(subparser)
     subparser = compareArgParser(subparser)
@@ -44,12 +45,12 @@ def main():
     # Parse
     args = parser.parse_args()
 
-    # Logging
-    logger = createLogger()
-
     # Start project
     prj = Project(args.project_name)
     prj.addSampleSheet(args.csv)
+
+    # Logging
+    createLogger(args, prj)
 
     # Start main function
     if args.command == "preprocess":
@@ -62,7 +63,7 @@ def main():
         compare(args, prj)
 
     # Exit
-    logger.info("Finished and exiting.")
+    prj.logger.info("Finished and exiting.")
 
     # Copy log to projectDir
     shutil.copy2(
@@ -92,7 +93,7 @@ def mainArgParser(parser):
     parser.add_argument("--no-checks", dest="checks", action="store_false",
                         help="Don't check file existence and integrity. Default=False.")
 
-    # Directories
+    # # Directories
     # parser.add_argument("-r", "--project-root", default=None,
     #                     dest="project_root", type=str,
     #                     help="""Directory in which the project will reside.
@@ -116,6 +117,8 @@ def mainArgParser(parser):
                         help="Queue to submit jobs to. Default is specified in the pipeline config file.", type=str)
     parser.add_argument("-t", "--time", default="10:00:00", dest="time",
                         help="Maximum time for jobs to run. Default is specified in the pipeline config file.", type=str)
+    parser.add_argument("-u", "--user-mail", default="mail@example.com", dest="user_mail",
+                        help="User email.", type=str)
 
     return parser
 
@@ -231,7 +234,7 @@ def preprocess(args, prj):
 
     # add track headers to track hubs
     for genome in pd.DataFrame(prj.samples)["genome"].unique():
-        with open(os.path.join(prj.dirs.htmlDir, "trackHub_{0}.txt".format(genome)), "w") as handle:
+        with open(os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(genome)), "w") as handle:
             handle.write("browser position chr21:28,049,584-38,023,583\n")
 
     # Preprocess samples
@@ -256,12 +259,13 @@ def preprocess(args, prj):
         if args.stage in ["all"]:
             # if more than one technical replicate, merge bams
             if type(sample.unmappedBam) == list:
+                unmappedBam = os.path.join(prj.dirs.raw, sample.sampleName + ".bam")
                 jobCode += tk.mergeBams(
                     inputBams=sample.unmappedBam,  # this is a list of sample paths
-                    outputBam=os.path.join(prj.dirs.raw, sample.sampleName + ".bam")
+                    outputBam=unmappedBam
                 )
                 # replace list with path to merged unmapped bam
-                sample.unmappedBam = os.path.join(prj.dirs.raw, sample.sampleName + ".bam")
+                sample.unmappedBam = unmappedBam
         if args.stage in ["all", "fastqc"]:
             # TODO:
             # Fastqc should be independent from this job but since there's no option in fastqc to specify
@@ -382,26 +386,29 @@ def preprocess(args, prj):
                     outputBam=sample.nodupsshifted
                 )
         if args.stage in ["all", "indexbam"]:
-            for s in [sample.dups, sample.nodups, sample.dupsshifted, sample.nodupsshifted]:
+            for s in [sample.dups, sample.nodups]:
                 jobCode += tk.indexBam(inputBam=s)
+            if sample.tagmented:
+                for s in [sample.dupsshifted, sample.nodupsshifted]:
+                    jobCode += tk.indexBam(inputBam=s)
 
         if args.stage in ["all", "maketracks"]:
             # right now tracks are only made for bams without duplicates
             jobCode += tk.bamToUCSC(
                 inputBam=sample.nodups,
                 outputBigWig=sample.bigwig,
-                genomeSizes=prj.config["annotations"]["genomeSizes"][sample.genome],
+                genomeSizes=prj.config["annotations"]["chrsizes"][sample.genome],
                 genome=sample.genome,
                 tagmented=sample.tagmented
             )
             jobCode += tk.addTrackToHub(
                 sampleName=sample.sampleName,
                 trackURL=sample.trackURL,
-                trackHub=os.path.join(prj.dirs.htmlDir, "trackHub_{0}.txt".format(sample.genome)),
+                trackHub=os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(sample.genome)),
                 colour=sample.trackColour
             )
             tk.linkToTrackHub(
-                trackHubURL=os.path.join(prj.dirs.htmlDir, "trackHub_{0}.txt".format(sample.genome)),
+                trackHubURL=os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(sample.genome)),
                 fileName=os.path.join(prj.dirs.root, "ucsc_tracks_{0}.html".format(sample.genome)),
                 genome=sample.genome
             )
@@ -440,7 +447,7 @@ def preprocess(args, prj):
     # write original annotation sheet to project folder
     # add field for manual sample-control pairing
     prj.sheet.df.controlSampleName = None
-    prj.sheet.to_csv(os.path.join(prj.dirs.root, prj.name, ".annotation_sheet.csv"))
+    prj.sheet.to_csv(os.path.join(prj.dirs.root, prj.name + ".annotation_sheet.csv"))
 
     prj.logger.debug("Finished preprocessing")
 

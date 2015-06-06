@@ -75,7 +75,7 @@ class Project(object):
         self.dirs = Paths()
 
         # Read configuration file
-        with open(_os.path.join(_os.path.expanduser("~"), "chipseq-pipelines.yaml"), 'r') as handle:
+        with open(_os.path.join(_os.path.expanduser("~"), "pipelines_config.yaml"), 'r') as handle:
             self.config = _yaml.load(handle)
 
         # If kwargs were passed, overule paths specified in the config with new ones.
@@ -118,8 +118,8 @@ class Project(object):
         self.dirs.root = _os.path.join(self.dirs.parent, self.name)
         # Runs
         self.dirs.runs = _os.path.join(self.dirs.root, "runs")
-        self.dirs.executables = _os.path.join(self.dirs.root, "executables")
-        self.dirs.logs = _os.path.join(self.dirs.root, "logs")
+        self.dirs.executables = _os.path.join(self.dirs.runs, "executables")
+        self.dirs.logs = _os.path.join(self.dirs.runs, "logs")
         # Data
         self.dirs.data = _os.path.join(self.dirs.root, "data")
         self.dirs.fastq = _os.path.join(self.dirs.data, "fastq")
@@ -231,7 +231,7 @@ class SampleSheet(object):
         self.csv = csv
 
         # Read configuration file
-        with open(_os.path.join(_os.path.expanduser("~"), "chipseq-pipelines.yaml"), 'r') as handle:
+        with open(_os.path.join(_os.path.expanduser("~"), "pipelines_config.yaml"), 'r') as handle:
             self.config = _yaml.load(handle)
 
         # Sample merging options:
@@ -334,7 +334,9 @@ class SampleSheet(object):
         sheet.to_csv("/projects/example/sheet2.csv")
         """
         df = _pd.DataFrame(self.samples)
-        df = df[["sampleName"] + self._columns + "dups"]
+        df = df[["sampleName"] + self._columns]
+        # add extra columns with sample attributes
+        df["mappedBam"] = [s.nodups for s in self.samples]
         df.to_csv(path, index=False)
 
 
@@ -352,7 +354,7 @@ class Sample(_pd.Series):
     s1 = Sample(sheet.ix[0])
     """
     def __init__(self, series):
-        from _os.path import expanduser
+        from os.path import expanduser
 
         # Use _pd.Series object to have all sample attributes
         if not isinstance(series, _pd.Series):
@@ -363,7 +365,7 @@ class Sample(_pd.Series):
         self.generateName()
 
         # Read configuration file
-        with open(_os.path.join(expanduser("~"), "chipseq-pipelines.yaml"), 'r') as handle:
+        with open(_os.path.join(expanduser("~"), "pipelines_config.yaml"), 'r') as handle:
             self.config = _yaml.load(handle)
 
         # check if sample is to be analysed with cuts
@@ -375,6 +377,7 @@ class Sample(_pd.Series):
         # Get read type
         # self.getReadType()
         self.readType = "SE"
+        self.paired = False
 
         # Get type of factor
         self.broad = True if self.technique in self.config["broadfactors"] else False

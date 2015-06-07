@@ -13,7 +13,6 @@ TODO: Adapt to allow run without --strand-specific!
 
 from argparse import ArgumentParser
 from collections import OrderedDict
-from rpy2.robjects.packages import importr
 import cPickle as pickle
 import HTSeq
 import numpy as np
@@ -21,8 +20,11 @@ import os
 import pandas as pd
 import pybedtools
 import re
-import rpy2.robjects as robj  # for ggplot in R
-import rpy2.robjects.pandas2ri  # for R dataframe conversion
+import matplotlib
+# Force matplotlib to not use any Xwindows backend.
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
 import sys
 
 
@@ -74,80 +76,42 @@ def main():
     df.columns = range(window_range[0], window_range[1])
 
     # Save
-    pickle.dump(df, open(exportName + ".pickle", 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
+    pickle.dump(
+        df,
+        open(
+            os.path.join(
+                args.plots_dir,
+                "pickles",
+                sample_name + "_tssCoverage_%ibp.pickle" % args.window_width
+            ),
+            'wb'
+        ),
+        protocol=pickle.HIGHEST_PROTOCOL
+    )
 
     # Compute averages
-    aveSignal = pd.DataFrame({"x": list(df.columns),                                            # x axis
+    aveSignal = pd.DataFrame({"x": list(df.columns),                                             # x axis
                               "average": df.apply(np.mean, axis=0),                              # both strands
                               "positive": df.ix[range(0, len(df), 2)].apply(np.mean, axis=0),    # positive strand
                               "negative": df.ix[range(1, len(df), 2)].apply(np.mean, axis=0)     # negative strand
                               })
 
-    # Melt df
-    aveSignal = pd.melt(aveSignal, id_vars=["x"])
-
-    plotFunc = robj.r("""
-        suppressPackageStartupMessages(library(ggplot2))
-
-        function(df){{
-            p = ggplot(df, aes(x, value, colour = variable)) +
-                geom_line() +
-                #stat_smooth(method = "gam", formula = y ~ s(x, k = 20), se = FALSE) +
-                facet_wrap(~variable, scales="free", ncol=3) +
-                xlab("Distance to peak") +
-                ylab("Average tags per bp") +
-                theme_bw() +
-                theme(legend.title=element_blank()) +
-                scale_colour_manual(values=c("black", "dark blue","dark red")) +
-                xlim(c(-100, 100)) +
-                theme(legend.position="bottom")
-
-            ggsave(filename = "{0}_averageProfile_200bp.pdf", plot = p, height = 3, width = 12)
-
-            p = ggplot(df, aes(x, value, colour = variable)) +
-                geom_line() +
-                #stat_smooth(method = "gam", formula = y ~ s(x, k = 20), se = FALSE) +
-                facet_wrap(~variable, scales="free", ncol=3) +
-                xlab("Distance to peak") +
-                ylab("Average tags per bp") +
-                theme_bw() +
-                theme(legend.title=element_blank()) +
-                scale_colour_manual(values=c("black", "dark blue","dark red")) +
-                xlim(c(-400, 400)) +
-                theme(legend.position="bottom")
-
-            ggsave(filename = "{0}_averageProfile_800bp.pdf", plot = p, height = 3, width = 12)
-
-            p = ggplot(df, aes(x, value, colour = variable)) +
-                geom_line() +
-                #stat_smooth(method = "gam", formula = y ~ s(x, k = 20), se = FALSE) +
-                facet_wrap(~variable, scales="free", ncol=3) +
-                xlab("Distance to peak") +
-                ylab("Average tags per bp") +
-                theme_bw() +
-                theme(legend.title=element_blank()) +
-                scale_colour_manual(values=c("black", "dark blue","dark red")) +
-                xlim(c({1}, {2})) +
-                theme(legend.position="bottom")
-
-            ggsave(filename = "{0}_averageProfile_{3}bp.pdf", plot = p, height = 3, width = 12)
-        }}
-    """.format(exportName, window_range[0], window_range[1], args.window_width))
-
-    importr('grDevices')
-    # convert the pandas dataframe to an R dataframe
-    robj.pandas2ri.activate()
-    aveSignal_R = robj.conversion.py2ri(aveSignal)
-
-    # run the plot function on the dataframe
-    plotFunc(aveSignal_R)
+    # Plot average profiles by strand
+    aveSignal.plot("x", ["average", "positive", "negative"], subplots=True, sharex=True, colormap="Accent")
+    plt.savefig("{0}_averageProfile_{1}bp.pdf".format(exportName, args.window_width))
 
     # join strand signal (plus - minus)
     df = df.xs('+', level="strand") + df.xs('-', level="strand")
 
     # Export as cdt
-    exportToJavaTreeView(df.copy(), exportName + "_%i_kmeans_clusters.cdt" % args.n_clusters)
-
+    exportToJavaTreeView(
+        df.copy(),
+        os.path.join(
+            args.plots_dir,
+            "cdt",
+            sample_name + "_tssCoverage_%ibp_averageProfile.cdt" % args.window_width
+        )
+    )
     # scale row signal to 0:1 (normalization)
     dfNorm = df.apply(lambda x: (x - min(x)) / (max(x) - min(x)), axis=1)
 
@@ -161,7 +125,14 @@ def main():
     dfNorm = dfNorm.reindex([order.index])
 
     # Export as cdt
-    exportToJavaTreeView(dfNorm.copy(), exportName + "_%i_kmeans_clusters.normalized_clustered.cdt" % args.n_clusters)
+    exportToJavaTreeView(
+        dfNorm.copy(),
+        os.path.join(
+            args.plots_dir,
+            "cdt",
+            sample_name + "_tssCoverage_%ibp_averageProfile.normalized.cdt" % args.window_width
+        )
+    )
 
 
 def bedToolsInterval2GenomicInterval(bedtool):

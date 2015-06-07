@@ -1,7 +1,7 @@
 #!/usr/bin/Rscript
 
 # load the library
-library(DiffBind)
+suppressPackageStartupMessages(library(package="DiffBind"))
 
 # parse arguments
 args <- commandArgs(TRUE)
@@ -36,7 +36,7 @@ dev.off()
 
 
 # Calculate similarity based on factor affinity
-if (length(samples) <= 2) {
+if (nrow(samples$samples) <= 2) {
     n = 2
 } else {
     n = 3

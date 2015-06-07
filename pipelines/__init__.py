@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 
 """
-ChIP-seq pipeline
+pipelines
+=========
+
+Pipelines for NGS
 
 Workflow explained:
     - Project is created
@@ -16,8 +19,9 @@ In the process, stuff is checked:
 
 :Example:
 
+from pipelines import Project
 prj = Project("ngs")
-prj.addSheet("sample_annotation.csv")
+prj.addSampleSheet("sample_annotation.csv")
 # that's it!
 
 # explore!
@@ -32,7 +36,7 @@ prj.sheet.to_csv(_os.path.join(prj.dirs.root, "sample_annotation.csv"))
 # but can be changed on the fly:
 prj = Project("ngs")
 prj.config["mergetechnical"] = False
-prj.addSheet("sample_annotation.csv")
+prj.addSampleSheet("sample_annotation.csv")
 
 """
 
@@ -60,13 +64,16 @@ class Project(object):
     :type parent: str
     :param parenthtml: Path to where the project structure will be created.
     :type parenthtml: str
+    :param dry: If dry mode is activated, no directories will be created.
+    :type dry: bool
 
     :Example:
 
+    from pipelines import Project
     prj = Project("ngs")
     prj = Project("ngs2", parent="/projects", parenthtml="/public_html")
     """
-    def __init__(self, name, **kwargs):
+    def __init__(self, name, dry=False, **kwargs):
         super(Project, self).__init__()
         # check it's a string
         self.name = name
@@ -89,8 +96,9 @@ class Project(object):
 
         # flow
         self.setProjectDirs()
-        self.makeProjectDirs()
-        self.setProjectPermissions()
+        if not dry:
+            self.makeProjectDirs()
+            self.setProjectPermissions()
 
         # samples
         self.samples = list()
@@ -123,13 +131,6 @@ class Project(object):
         self.dirs.logs = _os.path.join(self.dirs.runs, "logs")
         # Data
         self.dirs.data = _os.path.join(self.dirs.root, "data")
-        self.dirs.fastq = _os.path.join(self.dirs.data, "fastq")
-        self.dirs.fastqc = _os.path.join(self.dirs.data, "fastqc")
-        self.dirs.raw = _os.path.join(self.dirs.data, "raw")
-        self.dirs.mapped = _os.path.join(self.dirs.data, "mapped")
-        self.dirs.coverage = _os.path.join(self.dirs.data, "coverage")
-        self.dirs.peaks = _os.path.join(self.dirs.data, "peaks")
-        self.dirs.motifs = _os.path.join(self.dirs.data, "motifs")
         # Results
         self.dirs.results = _os.path.join(self.dirs.root, "results")
         self.dirs.qc = _os.path.join(self.dirs.results, "qc")
@@ -177,9 +178,9 @@ class Project(object):
         self.sheet.project = self
 
         # Generate sample objects from annotation sheet
-        self.sheet.getSamples()
+        self.sheet.makeSamples()
 
-        # Sample merging options:
+        # Generate sample objects if merging options are on:
         if self.config["options"]["mergetechnical"]:
             self.sheet.getBiologicalReplicates()
         if self.config["options"]["mergebiological"]:
@@ -187,11 +188,12 @@ class Project(object):
 
         # Add samples to Project
         for sample in self.sheet.samples:
-            # Check sample is from a suppoted genome
+            # Check sample is from a supported genome
             if sample.genome not in self.config["genomes"]:
                 raise TypeError("Sample's genome is not supported.")
             self.addSample(sample)
             sample.setFilePaths()
+            sample.makeSampleDirs()
 
     def addSample(self, sample):
         """
@@ -222,6 +224,7 @@ class SampleSheet(object):
 
     :Example:
 
+    from pipelines import Project, SampleSheet
     prj = Project("ngs")
     sheet = SampleSheet("/projects/example/sheet.csv", prj)
     """
@@ -273,12 +276,23 @@ class SampleSheet(object):
         if len(missing) != 0:
             raise TypeError("Annotation sheet is missing columns: %s" % " ".join(missing))
 
-    def getSamples(self):
+    def makeSamples(self):
         """
-        Creates samples from annotation sheet and adds the samples to project.
+        Creates samples from annotation sheet dependent on technique and adds them to the project.
         """
         for sample in range(len(self.df)):
-            self.samples.append(Sample(self.df.ix[sample]))
+            technique = self.df.ix[sample]["technique"]
+            if technique in self.config["techniques"]["chipseq"]:
+                self.samples.append(ChIPseqSample(self.df.ix[sample]))
+            elif technique in self.config["techniques"]["cm"]:
+                self.samples.append(CMSample(self.df.ix[sample]))
+            elif technique in self.config["techniques"]["dnase"]:
+                self.samples.append(DNaseSample(self.df.ix[sample]))
+            elif technique in self.config["techniques"]["atacseq"]:
+                self.samples.append(ATACseqSample(self.df.ix[sample]))
+            else:
+                # I might want to change this behaviour
+                self.samples.append(Sample(self.df.ix[sample]))
 
     def getBiologicalReplicates(self):
         """
@@ -331,6 +345,7 @@ class SampleSheet(object):
 
         :Example:
 
+        from pipelines import SampleSheet
         sheet = SampleSheet("/projects/example/sheet.csv")
         sheet.to_csv("/projects/example/sheet2.csv")
         """
@@ -350,6 +365,7 @@ class Sample(_pd.Series):
 
     :Example:
 
+    from pipelines import Project, SampleSheet, Sample
     prj = Project("ngs")
     sheet = SampleSheet("/projects/example/sheet.csv", prj)
     s1 = Sample(sheet.ix[0])
@@ -357,12 +373,12 @@ class Sample(_pd.Series):
     def __init__(self, series):
         from os.path import expanduser
 
-        # Use _pd.Series object to have all sample attributes
+        # Passed series must either be a pd.Series or a daugther class
         if not isinstance(series, _pd.Series):
             raise TypeError("Provided object is not a pandas Series.")
         super(Sample, self).__init__(series)
 
-        self.checkNotEmpty()
+        self.checkValid()
         self.generateName()
 
         # Read configuration file
@@ -370,7 +386,8 @@ class Sample(_pd.Series):
             self.config = _yaml.load(handle)
 
         # check if sample is to be analysed with cuts
-        self.tagmented = True if self.technique in self.config["tagment"] else False
+        cuts = self.config["techniques"]["cm"] + self.config["techniques"]["dnase"] + self.config["techniques"]["atacseq"]
+        self.tagmented = True if self.technique in cuts else False
 
         # Get track colour
         self.getTrackColour()
@@ -384,6 +401,8 @@ class Sample(_pd.Series):
         self.broad = True if self.technique in self.config["broadfactors"] else False
         self.histone = True if self.technique in self.config["histones"] else False
 
+        # Sample dirs
+        self.dirs = Paths()
         # Only when sample is added to project, can paths be added.
         # The SampleSheet object, after beeing assigned to a project, will
         # call Sample.setFilePaths()
@@ -391,9 +410,9 @@ class Sample(_pd.Series):
     def __repr__(self):
         return "Sample '%s'" % self.sampleName
 
-    def checkNotEmpty(self):
+    def checkValid(self):
         """
-        Check if any important attribute is None.
+        Check if any of its important attributes is None.
         """
         req = ["genome", "biologicalReplicate", "technicalReplicate", "unmappedBam"]
 
@@ -470,51 +489,54 @@ class Sample(_pd.Series):
         """
         Sets the paths of all files for this sample.
         """
-        self.fastqc = self.project.dirs.fastqc
+        self.dirs.sampleRoot = _os.path.join(self.project.dirs.data, self.name)
 
-        fastq = _os.path.join(self.project.dirs.fastq, self.name)
+        # Files in the root of the sample dir
+        self.fastqc = self.dirs.sampleRoot
+        self.trimlog = _os.path.join(self.dirs.sampleRoot, self.name + ".trimlog.txt")
+        self.alnRates = _os.path.join(self.dirs.sampleRoot, self.name + ".alnRates.txt")
+        self.alnMetrics = _os.path.join(self.dirs.sampleRoot, self.name + ".alnMetrics.txt")
+        self.dupsMetrics = _os.path.join(self.dirs.sampleRoot, self.name + ".duplicates.txt")
+
+        # Unmapped: merged bam, fastq, trimmed fastq
+        self.dirs.unmapped = _os.path.join(self.dirs.sampleRoot, "unmapped", self.name)
         if self.readType == "SE":
-            self.fastq = fastq + ".fastq"
+            self.fastq = self.dirs.unmapped + ".fastq"
         else:
-            self.fastq1 = fastq + ".1.fastq"
-            self.fastq2 = fastq + ".2.fastq"
-            self.fastqUnpaired = fastq + ".unpaired.fastq"
-
+            self.fastq1 = self.dirs.unmapped + ".1.fastq"
+            self.fastq2 = self.dirs.unmapped + ".2.fastq"
+            self.fastqUnpaired = self.dirs.unmapped + ".unpaired.fastq"
         if self.readType == "SE":
-            self.trimmed = fastq + ".trimmed.fastq"
+            self.trimmed = self.dirs.unmapped + ".trimmed.fastq"
         else:
-            self.trimmed1 = fastq + ".1.trimmed.fastq"
-            self.trimmed2 = fastq + ".2.trimmed.fastq"
-            self.trimmed1Unpaired = fastq + ".1_unpaired.trimmed.fastq"
-            self.trimmed2Unpaired = fastq + ".2_unpaired.trimmed.fastq"
-        self.trimlog = _os.path.join(self.project.dirs.fastq, self.name + ".trimlog.txt")
+            self.trimmed1 = self.dirs.unmapped + ".1.trimmed.fastq"
+            self.trimmed2 = self.dirs.unmapped + ".2.trimmed.fastq"
+            self.trimmed1Unpaired = self.dirs.unmapped + ".1_unpaired.trimmed.fastq"
+            self.trimmed2Unpaired = self.dirs.unmapped + ".2_unpaired.trimmed.fastq"
 
-        mapped = _os.path.join(self.project.dirs.mapped, self.name)
-        self.mapped = mapped + ".trimmed.bowtie2.bam"
-        self.alnRates = _os.path.join(self.project.dirs.results, self.name + ".alnRates.txt")
-        self.alnMetrics = _os.path.join(self.project.dirs.results, self.name + ".alnMetrics.txt"),
-
-        self.dups = mapped + ".trimmed.bowtie2.dups.bam"
-        self.nodups = mapped + ".trimmed.bowtie2.nodups.bam"
-        self.dupsMetrics = _os.path.join(self.project.dirs.results, self.name + ".duplicates.txt")
-
-        # This will create additional bam files with reads shifted
+        # Mapped: mapped, duplicates marked, removed, reads shifted
+        self.dirs.mapped = _os.path.join(self.dirs.sampleRoot, "mapped")
+        self.mapped = self.dirs.mapped + ".trimmed.bowtie2.bam"
+        self.dups = self.dirs.mapped + ".trimmed.bowtie2.dups.bam"
+        self.nodups = self.dirs.mapped + ".trimmed.bowtie2.nodups.bam"
+        # this will create additional bam files with reads shifted
         if self.tagmented:
-            self.dupsshifted = mapped + ".trimmed.bowtie2.dups.shifted.bam"
-            self.nodupsshifted = mapped + ".trimmed.bowtie2.nodups.shifted.bam"
+            self.dupsshifted = self.dirs.mapped + ".trimmed.bowtie2.dups.shifted.bam"
+            self.nodupsshifted = self.dirs.mapped + ".trimmed.bowtie2.nodups.shifted.bam"
 
+        # Project's public_html folder
         self.bigwig = _os.path.join(self.project.dirs.html, self.name + ".bigWig")
+
+        # Track url
         self.trackURL = self.config["url"] + self.name + ".bigWig"
-        self.coverage = _os.path.join(self.project.dirs.coverage, self.name + ".cov")
 
-        # Analysis stuff
-        self.peaksDir = _os.path.join(self.project.dirs.peaks, self.sampleName + "_peaks")
-        self.peaks = _os.path.join(self.project.dirs.peaks, self.sampleName + "_peaks" + (".narrowPeak" if not self.broad else ".broadPeak"))
-        self.frip = _os.path.join(self.project.dirs.results, self.sampleName + "_FRiP.txt")
-        self.motifsDir = _os.path.join(self.project.dirs.motifs, self.sampleName)
-
-        self.peaksMotifCentered = _os.path.join(self.peaksDir, self.sampleName + "_peaks.motifCentered.bed")
-        self.peaksMotifAnnotated = _os.path.join(self.peaksDir, self.sampleName + "_peaks.motifAnnotated.bed")
+    def makeSampleDirs(self):
+        """
+        Creates sample directory structure if it doesn't exist.
+        """
+        for name, path in self.dirs.__dict__.items():
+            if not _os.path.exists(path):
+                _os.makedirs(path)
 
     def getTrackColour(self):
         """
@@ -531,3 +553,112 @@ class Sample(_pd.Series):
                 self.trackColour = self.config["trackcolours"]["DNASE"]
             else:
                 self.trackColour = random.sample(self.config["colourgradient"], 1)[0]  # pick one randomly
+
+
+class ChIPseqSample(Sample):
+    """
+    Class to model ChIP-seq samples based on the generic Sample class (itself a pandas.Series).
+
+    :param series: Pandas `Series` object.
+    :type series: pandas.Series
+
+    :Example:
+
+    from pipelines import Project, SampleSheet, ChIPseqSample
+    prj = Project("ngs")
+    sheet = SampleSheet("/projects/example/sheet.csv", prj)
+    s1 = ChIPseqSample(sheet.ix[0])
+    """
+    def __init__(self, series):
+
+        # Passed series must either be a pd.Series or a daugther class
+        if not isinstance(series, _pd.Series):
+            raise TypeError("Provided object is not a pandas Series.")
+        super(ChIPseqSample, self).__init__(series)
+
+    def __repr__(self):
+        return "Sample '%s'" % self.sampleName
+
+    def setFilePaths(self):
+        """
+        Sets the paths of all files for this sample.
+        """
+        # Inherit paths from Sample by running Sample's setFilePaths()
+        super(ChIPseqSample, self).setFilePaths()
+
+        # Files in the root of the sample dir
+        self.frip = _os.path.join(self.dirs.sampleRoot, self.sampleName + "_FRiP.txt")
+
+        # Mapped: mapped, duplicates marked, removed, reads shifted
+        mapped = _os.path.join(self.dirs.sampleRoot, "mapped")
+        # this will create additional bam files with reads shifted
+        if self.tagmented:
+            self.dupsshifted = mapped + ".trimmed.bowtie2.dups.shifted.bam"
+            self.nodupsshifted = mapped + ".trimmed.bowtie2.nodups.shifted.bam"
+
+        # Coverage: read coverage in windows genome-wide
+        self.dirs.coverage = _os.path.join(self.dirs.sampleRoot, "coverage")
+        self.coverage = _os.path.join(self.dirs.coverage, self.name + ".cov")
+
+        # Peaks: peaks called and derivate files
+        self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, self.sampleName + "_peaks")
+        self.peaks = _os.path.join(self.dirs.sampleRoot, self.sampleName + "_peaks" + (".narrowPeak" if not self.broad else ".broadPeak"))
+        self.peaksMotifCentered = _os.path.join(self.dirs.peaks, self.sampleName + "_peaks.motifCentered.bed")
+        self.peaksMotifAnnotated = _os.path.join(self.dirs.peaks, self.sampleName + "_peaks.motifAnnotated.bed")
+
+        # Motifs
+        self.dirs.motifs = _os.path.join(self.dirs.sampleRoot, "motifs", self.sampleName)
+
+
+class CMSample(ChIPseqSample):
+    """
+    Class to model CM samples based on the ChIPseqSample class.
+
+    :param series: Pandas `Series` object.
+    :type series: pandas.Series
+    """
+    def __init__(self, series):
+
+        # Use _pd.Series object to have all sample attributes
+        if not isinstance(series, _pd.Series):
+            raise TypeError("Provided object is not a pandas Series.")
+        super(CMSample, self).__init__(series)
+
+    def __repr__(self):
+        return "CM sample '%s'" % self.sampleName
+
+
+class DNaseSample(ChIPseqSample):
+    """
+    Class to model DNase-seq samples based on the ChIPseqSample class.
+
+    :param series: Pandas `Series` object.
+    :type series: pandas.Series
+    """
+    def __init__(self, series):
+
+        # Use _pd.Series object to have all sample attributes
+        if not isinstance(series, _pd.Series):
+            raise TypeError("Provided object is not a pandas Series.")
+        super(DNaseSample, self).__init__(series)
+
+    def __repr__(self):
+        return "DNase-seq sample '%s'" % self.sampleName
+
+
+class ATACseqSample(ChIPseqSample):
+    """
+    Class to model ATAC-seq samples based on the ChIPseqSample class.
+
+    :param series: Pandas `Series` object.
+    :type series: pandas.Series
+    """
+    def __init__(self, series):
+
+        # Use _pd.Series object to have all sample attributes
+        if not isinstance(series, _pd.Series):
+            raise TypeError("Provided object is not a pandas Series.")
+        super(ATACseqSample, self).__init__(series)
+
+    def __repr__(self):
+        return "ATAC-seq sample '%s'" % self.sampleName

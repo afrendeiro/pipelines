@@ -5,21 +5,16 @@ Project managements and Sample loop.
 """
 
 from argparse import ArgumentParser
-import os
-import sys
-import logging
 from pipelines import Project
 from pipelines import toolkit as tk
 import cPickle as pickle
+import os
 import pandas as pd
-import time
 import re
-import textwrap
-import shutil
 import subprocess
-
-# TODO: solve pandas chained assignments
-pd.options.mode.chained_assignment = None
+import sys
+import textwrap
+import time
 
 __author__ = "Andre Rendeiro"
 __copyright__ = "Copyright 2015, Andre Rendeiro"
@@ -33,7 +28,7 @@ __status__ = "Development"
 
 def main():
     # Parse command-line arguments
-    parser = ArgumentParser(description="Project managements and Sample loop.")
+    parser = ArgumentParser(description="Project management and sample loop.")
 
     # Subparsers
     subparser = parser.add_subparsers(title="sub-command", dest="command")
@@ -41,6 +36,7 @@ def main():
     subparser = preprocessArgParser(subparser)
     subparser = analyzeArgParser(subparser)
     subparser = compareArgParser(subparser)
+    statsArgParser(subparser)
 
     # Parse
     args = parser.parse_args()
@@ -48,9 +44,6 @@ def main():
     # Start project
     prj = Project(args.project_name)
     prj.addSampleSheet(args.csv)
-
-    # Logging
-    createLogger(args, prj)
 
     # Start main function
     if args.command in ["preprocess", "analyse"]:
@@ -61,14 +54,7 @@ def main():
         compare(args, prj)
 
     # Exit
-    prj.logger.info("Finished and exiting.")
-
-    # Copy log to projectDir
-    shutil.copy2(
-        os.path.join(os.getcwd(), prj.name + ".log"),
-        os.path.join(prj.dirs.runs, prj.name + ".log")
-    )
-
+    print("Finished and exiting.")
     sys.exit(0)
 
 
@@ -83,27 +69,10 @@ def mainArgParser(parser):
     # Behaviour
     parser.add_argument("-k", "--keep-tmp", dest="keep_tmp", action="store_true",
                         help="Keep intermediary files. If not it will only preserve final files. Default=False.")
-    parser.add_argument("-l", "--log-level", default="INFO", dest="log_level",
-                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-                        help="Logging level. Default=INFO.", type=str)
     parser.add_argument("--dry-run", dest="dry_run", action="store_true",
                         help="Dry run. Assemble commands, but do not submit jobs to slurm. Default=False.")
     parser.add_argument("--no-checks", dest="checks", action="store_false",
                         help="Don't check file existence and integrity. Default=False.")
-
-    # # Directories
-    # parser.add_argument("-r", "--project-root", default=None,
-    #                     dest="project_root", type=str,
-    #                     help="""Directory in which the project will reside.
-    #                     Default is specified in the pipeline config file.""")
-    # parser.add_argument("--html-root", default=None,
-    #                     dest="html_root", type=str,
-    #                     help="""public_html directory in which bigwig files for the project will reside.
-    #                     Default is specified in the pipeline config file.""")
-    # parser.add_argument("--url-root", default=None,
-    #                     dest="url_root", type=str,
-    #                     help="""Url mapping to public_html directory where bigwig files for the project will be accessed.
-    #                     Default is specified in the pipeline config file.""")
 
     # Slurm-related
     parser.add_argument("-c", "--cpus", default=None, dest="cpus",
@@ -123,10 +92,11 @@ def mainArgParser(parser):
 
 def preprocessArgParser(subparser):
     """
-    subparser for preprocess
-    """
+    Add options to subparser for the preprocess command.
 
-    # preprocess
+    :param subparser: Parsed ArgumentParser object.
+    :type subparser: argparse.ArgumentParser
+    """
     preprocess_subparser = subparser.add_parser("preprocess")
     preprocess_subparser.add_argument("-s", "--stage", default="all", dest="stage",
                                       choices=["all", "bam2fastq", "fastqc", "trim", "mapping",
@@ -142,12 +112,16 @@ def preprocessArgParser(subparser):
     preprocess_subparser.add_argument("--window-size", default=1000, dest="windowsize",
                                       help="Window size used for genome-wide correlations. Default=1000.",
                                       type=int)
+
     return subparser
 
 
 def analyzeArgParser(subparser):
     """
-    subparser for stats.
+    Add options to subparser for the analyse command.
+
+    :param subparser: Parsed ArgumentParser object.
+    :type subparser: argparse.ArgumentParser
     """
     # analyse
     analyse_subparser = subparser.add_parser("analyse")
@@ -161,12 +135,16 @@ def analyzeArgParser(subparser):
                                    dest="peak_window_width",
                                    help="Width of window around peak motifs. Default=2000.",
                                    type=int)
+
     return subparser
 
 
 def compareArgParser(subparser):
     """
-    subparser for compare.
+    Add options to subparser for the compare command.
+
+    :param subparser: Parsed ArgumentParser object.
+    :type subparser: argparse.ArgumentParser
     """
     # compare
     compare_subparser = subparser.add_parser("compare")
@@ -183,55 +161,32 @@ def compareArgParser(subparser):
     return subparser
 
 
-def createLogger(args, prj):
+def statsArgParser(subparser):
     """
-    Creates a logger for the run.
+    Add options to subparser for the stats command.
+
+    :param subparser: Parsed ArgumentParser object.
+    :type subparser: argparse.ArgumentParser
     """
+    subparser.add_parser("stats")
 
-    global logger
-    logger = logging.getLogger(__name__)
-    levels = {
-        "DEBUG": logging.DEBUG,
-        "INFO": logging.INFO,
-        "WARNING": logging.WARNING,
-        "ERROR": logging.ERROR,
-        "CRITICAL": logging.CRITICAL
-    }
-    logger.setLevel(levels[args.log_level])
-
-    # create a file handler
-    # (for now in current working dir, in the end copy log to projectDir)
-    handler = logging.FileHandler(os.path.join(os.getcwd(), args.project_name + ".log"))
-    handler.setLevel(logging.INFO)
-    # format logger
-    formatter = logging.Formatter(fmt='%(levelname)s: %(asctime)s - %(message)s', datefmt='%Y/%m/%d %H:%M:%S')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-    # create a stout handler
-    stdout = logging.StreamHandler(sys.stdout)
-    stdout.setLevel(logging.ERROR)
-    formatter = logging.Formatter(fmt='%(levelname)s: %(asctime)s - %(message)s', datefmt='%Y/%m/%d %H:%M:%S')
-    stdout.setFormatter(formatter)
-    logger.addHandler(stdout)
-
-    prj.logger = logger
+    return subparser
 
 
 def sampleLoop(args, prj):
     """
     This loops through all samples and submits a job to the pipeline.
 
-    :param args: Arguments from ArgumentParser.
-    :type args: ArgumentParser
+    :param args: Parsed ArgumentParser object.
+    :type args: argparse.ArgumentParser
     :param prj: `Project` object.
-    :type prj: Project
+    :type prj: pipelines.Project
     """
 
-    prj.logger.info("Starting sample preprocessing.")
+    print("Starting sample preprocessing.")
 
     # start pipeline
-    runName = "_".join([prj.name, "preprocess", time.strftime("%Y%m%d-%H%M%S")])
+    runName = "_".join([prj.name, time.strftime("%Y%m%d-%H%M%S")])
 
     # add track headers to track hubs
     for genome in pd.DataFrame(prj.samples)["genome"].unique():
@@ -255,9 +210,13 @@ def sampleLoop(args, prj):
             userMail=args.user_mail
         )
 
+        samplePickle = os.path.join(prj.dirs.pickles, jobName + ".pickle")
+
         if args.command == "preprocess":
+            # self reference the pickle file in its sample
+            sample.pickle = samplePickle
             # save pickle with all objects
-            samplePickle = pickle.dump((prj, sample, args))
+            pickle.dump((prj, sample, args), open(samplePickle, "wb"))
         elif args.command == "analyse":
             # Skip samples without paired control
             if not hasattr(sample, "controlSampleName"):
@@ -271,14 +230,17 @@ def sampleLoop(args, prj):
             if len(ctrl) == 1:
                 ctrl = ctrl[0]
             else:
-                prj.logger.error("Provided control sample name is not unambigous: %s" % ctrl)
+                print("Provided control sample name is not unambigous: %s" % ctrl)
                 continue
 
+            # self reference the pickle file in its sample
+            sample.pickle = samplePickle
             # save pickle with all objects (this time, 2nd element is a tuple!)
-            samplePickle = pickle.dump((prj, (sample, ctrl), args))
+            pickle.dump((prj, sample, args), open(samplePickle, "wb"))
 
         # Actual call to pipeline
-        jobCode += "chipseq-pipeline {0}".format(samplePickle)
+        # In the future this could be technique-dependent
+        jobCode += "chipseq-pipeline {0}\n".format(samplePickle)
 
         # Slurm footer
         jobCode += tk.slurmFooter()
@@ -290,13 +252,13 @@ def sampleLoop(args, prj):
 
         # Submit to slurm
         if not args.dry_run:
-            prj.logger.info("Submitting job to slurm: %s" % jobName)
+            print("Submitting job to slurm: %s" % jobName)
             status = tk.slurmSubmitJob(jobFile)
 
             if status != 0:
-                prj.logger.error("Slurm job '%s' not successfull" % jobFile)
+                print("Slurm job '%s' not successfull" % jobFile)
                 sys.exit(1)
-            prj.logger.debug("Project '%s'submission finished successfully." % args.project_name)
+            print("Project '%s'submission finished successfully." % args.project_name)
 
         # Create link to sample in trackHub
         tk.linkToTrackHub(
@@ -310,15 +272,20 @@ def sampleLoop(args, prj):
     prj.sheet.df.controlSampleName = None
     prj.sheet.to_csv(os.path.join(prj.dirs.root, prj.name + ".annotation_sheet.csv"))
 
-    prj.logger.debug("Finished preprocessing")
+    print("Finished preprocessing")
 
 
 def readStats(args, prj):
     """
     Given an annotation sheet with replicates, gets number of reads mapped, duplicates, etc...
+
+    :param args: Parsed ArgumentParser object.
+    :type args: argparse.ArgumentParser
+    :param prj: `Project` object.
+    :type prj: pipelines.Project
     """
 
-    prj.logger.info("Starting sample read stats.")
+    print("Starting sample read stats.")
 
     cols = ["readCount", "unpaired", "unaligned", "unique", "multiple", "alignmentRate"]
 
@@ -327,7 +294,7 @@ def readStats(args, prj):
         try:
             sample.alnStats = parseBowtieStats(sample.alnRates)
         except:
-            prj.logger.warn("Record with alignment rates is empty or not found for sample %s" % sample.sampleName)
+            print("Record with alignment rates is empty or not found for sample %s" % sample.sampleName)
             pass
 
         # Get duplicate stats
@@ -340,7 +307,7 @@ def readStats(args, prj):
             for col in range(len(cols)):
                 sample.append(dups.drop(["LIBRARY"], axis=1).ix[0][col])
         except:
-            prj.logger.warn("Record with duplicates is empty or not found for sample %s" % sample.sampleName)
+            print("Record with duplicates is empty or not found for sample %s" % sample.sampleName)
             pass
 
         # Get NSC and RSC
@@ -371,7 +338,7 @@ def readStats(args, prj):
 
                     sample["FRiP"] = readsInPeaks / mappedReads
                 except:
-                    prj.logger.warn("Record with FRiP value is empty or not found for sample %s" % sample.sampleName)
+                    print("Record with FRiP value is empty or not found for sample %s" % sample.sampleName)
                     pass
 
     samples = pd.DataFrame(prj.samples)
@@ -381,7 +348,7 @@ def readStats(args, prj):
     # write annotation sheet with biological replicates
     samples.to_csv(prj.sampleStats, index=False)
 
-    prj.logger.debug("Finished getting read statistics.")
+    print("Finished getting read statistics.")
 
 
 def compare(args, prj):
@@ -391,7 +358,13 @@ def compare(args, prj):
 def getReadType(bamFile, n=10):
     """
     Gets the read type (single, paired) and length of bam file.
-    Returns tuple of (readType=string, readLength=int).
+
+    :param bamFile: Bam file to determine read attributes.
+    :type bamFile: str
+    :param n: Number of lines to read from bam file.
+    :type n: int
+    :returns: tuple of (readType=string, readLength=int).
+    :rtype: tuple
     """
     from collections import Counter
     p = subprocess.Popen(['samtools', 'view', bamFile], stdout=subprocess.PIPE)
@@ -421,6 +394,9 @@ def getReadType(bamFile, n=10):
 def parseBowtieStats(statsFile):
     """
     Parses Bowtie2 stats file, returns series with values.
+
+    :param statsFile: Bowtie2 output file with alignment statistics.
+    :type statsFile: str
     """
     stats = pd.Series(index=["readCount", "unpaired", "unaligned", "unique", "multiple", "alignmentRate"])
 
@@ -454,6 +430,11 @@ def parseQC(sampleName, qcFile):
     """
     Parses QC table produced by phantompeakqualtools (spp) and adds to sample annotation sheet
     sample quality metrics for each sample.
+
+    :param sampleName: Sample name.
+    :type sampleName: str
+    :param qcFile: phantompeakqualtools output file sample quality measurements.
+    :type qcFile: str
     """
     series = pd.Series(index=["NSC", "RSC", "qualityTag"])
     try:

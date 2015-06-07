@@ -45,6 +45,9 @@ def main():
     elif args.command == "analyse":
         analyse(args, prj, sample, ctrl)
 
+    # Remove pickle
+    "rm %s" % args.samplePickle
+
     # Exit
     prj.logger.info("Finished and exiting.")
 

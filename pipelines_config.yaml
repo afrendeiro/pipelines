@@ -4,22 +4,10 @@ user: arendeiro
 email: arendeiro@cemm.oeaw.ac.at
 
 paths:
-    parent: /projects
-    parenthtml: /public_html
+    parent: /home/afr/workspace/projects
+    parenthtml: /home/afr/workspace/projects/
 
 url: http://www.biomedical-sequencing.at/bocklab/arendeiro/
-
-sheet: # mandatory columns in sample annotation sheet
-    - "cellLine"
-    - "numberCells"
-    - "technique"
-    - "ip"
-    - "patient"
-    - "treatment"
-    - "biologicalReplicate"
-    - "technicalReplicate"
-    - "unmappedBam"
-    - "genome"
 
 options:
     slurm:
@@ -29,8 +17,6 @@ options:
         time: "10:00:00"
     mergetechnical: True
     mergebiological: True
-    genomewindowwidth: 1000
-    peakwindowwidth: 2000
 
 genomes:
     - hg19
@@ -51,6 +37,33 @@ annotations:
         mm10: /fhgfs/groups/lab_bock/arendeiro/share/GRCm38_mm19_refSeq.tss.bed
 
 adapters: /fhgfs/groups/lab_bock/shared/cm.fa
+
+sheet: # mandatory columns in sample annotation sheet
+    - "cellLine"
+    - "numberCells"
+    - "technique"
+    - "ip"
+    - "patient"
+    - "treatment"
+    - "biologicalReplicate"
+    - "technicalReplicate"
+    - "genome"
+
+techniques:
+    chipseq:
+        - "CHIP"
+        - "CHIPSEQ"
+        - "CHIP-SEQ"
+    cm:
+        - "CM"
+    dnase:
+        - "DNASE"
+        - "DNASESEQ"
+        - "DNASE-SEQ"
+    atacseq:
+        - "ATAC"
+        - "ATAC-SEQ"
+        - "ATACSEQ"
 
 tagment:
     - "DNASE"
@@ -118,4 +131,3 @@ colourgradient: # 10 colour gradient from red to blue
     - "52,2,96"
     - "37,2,109"
     - "22,2,122"
-

@@ -49,7 +49,7 @@ def main():
     "rm %s" % args.samplePickle
 
     # Exit
-    prj.logger.info("Finished and exiting.")
+    print("Finished and exiting.")
 
     sys.exit(0)
 
@@ -71,7 +71,7 @@ def preprocess(args, prj, sample):
     along with a UCSC browser track.
     """
 
-    prj.logger.info("Starting sample preprocessing.")
+    print("Starting sample preprocessing.")
 
     # Start Pypiper object
     pipe = Pypiper("pipe", prj.dirs.logs + sample.sampleName)
@@ -82,7 +82,7 @@ def preprocess(args, prj, sample):
     if args.stage in ["all"]:
         # if more than one technical replicate, merge bams
         if type(sample.unmappedBam) == list:
-            unmappedBam = os.path.join(prj.dirs.raw, sample.sampleName + ".bam")
+            unmappedBam = os.path.join(sample.dirs.unmapped, sample.sampleName + ".bam")
             cmd = tk.mergeBams(
                 inputBams=sample.unmappedBam,  # this is a list of sample paths
                 outputBam=unmappedBam
@@ -97,9 +97,9 @@ def preprocess(args, prj, sample):
         # which requires fastqc to run in the same job as the rest :S
         cmd = tk.fastqc(
             inputBam=sample.unmappedBam,
-            outputDir=prj.dirs.fastqc
+            outputDir=sample.dirs.sampleRoot
         )
-        pipe.call_lock(cmd, prj.dirs.fastqc + sample.sampleName + ".zip")
+        pipe.call_lock(cmd, sample.dirs.sampleRoot + sample.sampleName + ".zip")
     # convert bam to fastq
     if args.stage in ["all", "bam2fastq"]:
         if not sample.paired:
@@ -149,7 +149,7 @@ def preprocess(args, prj, sample):
             cmd = tk.skewer(
                 inputFastq1=sample.fastq1 if sample.paired else sample.fastq,
                 inputFastq2=sample.fastq2 if sample.paired else None,
-                outputPrefix=os.path.join(prj.dirs.fastq, sample.sampleName),
+                outputPrefix=os.path.join(sample.dirs.unmapped, sample.sampleName),
                 cpus=args.cpus,
                 adapters=prj.config["adapters"]
             )
@@ -157,24 +157,24 @@ def preprocess(args, prj, sample):
             # move files to have common name
             if not sample.paired:
                 cmd = tk.moveFile(
-                    os.path.join(prj.dirs.fastq, sample.sampleName + "-trimmed.fastq"),
+                    os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed.fastq"),
                     sample.trimmed
                 )
                 tempFiles.append(sample.trimmed)
             else:
                 cmd = tk.moveFile(
-                    os.path.join(prj.dirs.fastq, sample.sampleName + "-trimmed-pair1.fastq"),
+                    os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed-pair1.fastq"),
                     sample.trimmed1
                 )
                 cmd = tk.moveFile(
-                    os.path.join(prj.dirs.fastq, sample.sampleName + "-trimmed-pair2.fastq"),
+                    os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed-pair2.fastq"),
                     sample.trimmed2
                 )
                 tempFiles.append(sample.trimmed1)
                 tempFiles.append(sample.trimmed2)
             # move log to results dir
             cmd = tk.moveFile(
-                os.path.join(prj.dirs.fastq, sample.sampleName + "-trimmed.log"),
+                os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed.log"),
                 sample.trimlog
             )
 
@@ -260,12 +260,12 @@ def preprocess(args, prj, sample):
 
     # Remove intermediary files
     if args.stage == "all" and not args.keep_tmp:
-        prj.logger.debug("Removing intermediary files")
+        print("Removing intermediary files")
         for fileName in tempFiles:
             cmd = tk.removeFile(fileName)
             pipe.call_lock(cmd, shell=True)
 
-    prj.logger.debug("Finished preprocessing sample %s." % sample.sampleName)
+    print("Finished preprocessing sample %s." % sample.sampleName)
 
 
 def analyse(args, prj, sample, ctrl):
@@ -273,7 +273,7 @@ def analyse(args, prj, sample, ctrl):
     Perform ChIP-seq QC, call peaks, perform de novo motif discovery,
     plot signal around called peaks and TSSs.
     """
-    prj.logger.info("Starting sample analysis.")
+    print("Starting sample analysis.")
 
     # Start Pypiper object
     pipe = Pypiper("pipe", prj.dirs.logs + sample.sampleName)
@@ -289,15 +289,15 @@ def analyse(args, prj, sample, ctrl):
     if args.stage in ["all", "callpeaks"]:
         if args.peak_caller == "macs2":
             # make dir for output
-            if not os.path.exists(os.path.join(prj.dirs.peaks, sample.sampleName)):
-                os.makedirs(os.path.join(prj.dirs.peaks, sample.sampleName))
+            if not os.path.exists(os.path.join(sample.dirs.peaks, sample.sampleName)):
+                os.makedirs(os.path.join(sample.dirs.peaks, sample.sampleName))
 
             # For point-source factors use default settings
             # For broad factors use broad settings
             cmd = tk.macs2CallPeaks(
                 treatmentBam=sample.nodups,
                 controlBam=ctrl.nodups,
-                outputDir=os.path.join(prj.dirs.peaks, sample.sampleName),
+                outputDir=os.path.join(sample.dirs.peaks, sample.sampleName),
                 sampleName=sample.sampleName,
                 genome=sample.genome,
                 broad=True if sample.broad else False
@@ -311,7 +311,7 @@ def analyse(args, prj, sample, ctrl):
                 controlBam=ctrl.nodups,
                 treatmentName=sample.sampleName,
                 controlName=ctrl.sampleName,
-                outputDir=os.path.join(prj.dirs.peaks, sample.sampleName),
+                outputDir=os.path.join(sample.dirs.peaks, sample.sampleName),
                 broad=True if sample.broad else False,
                 cpus=args.cpus
             )
@@ -320,17 +320,17 @@ def analyse(args, prj, sample, ctrl):
             raise NotImplementedError("Calling peaks with Zinba is not yet implemented.")
             # cmd = tk.bamToBed(
             #     inputBam=sample.nodups,
-            #     outputBed=os.path.join(prj.dirs.peaks, sample.sampleName + ".bed"),
+            #     outputBed=os.path.join(sample.dirs.peaks, sample.sampleName + ".bed"),
             # )
-            # pipe.call_lock(cmd, os.path.join(prj.dirs.peaks, sample.sampleName + ".bed"))
+            # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, sample.sampleName + ".bed"))
             # cmd = tk.bamToBed(
             #     inputBam=ctrl.nodups,
-            #     outputBed=os.path.join(prj.dirs.peaks, control.sampleName + ".bed"),
+            #     outputBed=os.path.join(sample.dirs.peaks, control.sampleName + ".bed"),
             # )
-            # pipe.call_lock(cmd, os.path.join(prj.dirs.peaks, control.sampleName + ".bed"))
+            # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, control.sampleName + ".bed"))
             # cmd = tk.zinbaCallPeaks(
-            #     treatmentBed=os.path.join(prj.dirs.peaks, sample.sampleName + ".bed"),
-            #     controlBed=os.path.join(prj.dirs.peaks, control.sampleName + ".bed"),
+            #     treatmentBed=os.path.join(sample.dirs.peaks, sample.sampleName + ".bed"),
+            #     controlBed=os.path.join(sample.dirs.peaks, control.sampleName + ".bed"),
             #     tagmented=sample.tagmented,
             #     cpus=args.cpus
             # )
@@ -429,12 +429,12 @@ def analyse(args, prj, sample, ctrl):
 
     # if args.stage in ["all", "footprints"] and control and sample.tagmented:
     #     cmd = tk.footprintAnalysis(
-    #         prj.dirs.peaks, sampleName, sampleName + "_peaks.motifCentered.bed"),
-    #         prj.dirs.peaks, sampleName, sampleName + "_peaks.motifAnnotated.bed")
+    #         sample.dirs.peaks, sampleName, sampleName + "_peaks.motifCentered.bed"),
+    #         sample.dirs.peaks, sampleName, sampleName + "_peaks.motifAnnotated.bed")
     #     )
     #     pipe.call_lock(cmd)
 
-    prj.logger.debug("Finished analysis")
+    print("Finished analysis")
 
 
 if __name__ == '__main__':

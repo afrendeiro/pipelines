@@ -175,7 +175,7 @@ def statsArgParser(subparser):
 
 def sampleLoop(args, prj):
     """
-    This loops through all samples and submits a job to the pipeline.
+    Loop through all samples and submit jobs to the pipeline under Slurm.
 
     :param args: Parsed ArgumentParser object.
     :type args: argparse.ArgumentParser

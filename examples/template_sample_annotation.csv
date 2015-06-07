@@ -1,4 +1,4 @@
-sampleName,cellLine,numberCells,technique,ip,treatment,patient,experimentName,biologicalReplicate,technicalReplicate,filePath,genome
+sampleName,cellLine,numberCells,technique,ip,treatment,patient,experimentName,biologicalReplicate,technicalReplicate,unmappedBam,genome
 ,K562,10M,ChIP,H3K4me3,,,CM_16_1,1,1,/data/runs/sample_1.bam,hg19
 ,K562,10M,ChIP,H3K27me3,,,CM_16_1,1,1,/data/runs/sample_2.bam,hg19
 ,K562,10M,ChIP,H3K36me3,,,CM_16_1,1,1,/data/runs/sample_3.bam,hg19

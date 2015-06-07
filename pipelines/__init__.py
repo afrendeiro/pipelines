@@ -265,7 +265,10 @@ class SampleSheet(object):
 
         # Filter some columns out
         if not all:
-            df = df[["sampleName"] + self._columns + ["mapped"]]
+            columns = self._columns
+            if hasattr(df, "unmapped"):
+                columns[columns.index("unmappedBam")] = "unmapped"
+            df = df[["sampleName"] + columns + ["mapped"]]
 
         return df
 
@@ -405,9 +408,7 @@ class Sample(object):
         self.getTrackColour()
 
         # Get read type
-        # self.getReadType()
-        self.readType = "SE"
-        self.paired = False
+        self.getReadType()
 
         # Get type of factor
         self.broad = True if self.technique in self.config["broadfactors"] else False
@@ -536,6 +537,10 @@ class Sample(object):
             self.dupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.shifted.bam")
             self.nodupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.shifted.bam")
 
+        # Coverage: read coverage in windows genome-wide
+        self.dirs.coverage = _os.path.join(self.dirs.sampleRoot, "coverage")
+        self.coverage = _os.path.join(self.dirs.coverage, self.name + ".cov")
+
         # Project's public_html folder
         self.bigwig = _os.path.join(self.project.dirs.html, self.name + ".bigWig")
 
@@ -606,10 +611,6 @@ class ChIPseqSample(Sample):
         if self.tagmented:
             self.dupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.shifted.bam")
             self.nodupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.shifted.bam")
-
-        # Coverage: read coverage in windows genome-wide
-        self.dirs.coverage = _os.path.join(self.dirs.sampleRoot, "coverage")
-        self.coverage = _os.path.join(self.dirs.coverage, self.name + ".cov")
 
         # Peaks: peaks called and derivate files
         self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks")

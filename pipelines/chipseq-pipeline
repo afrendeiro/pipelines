@@ -30,9 +30,10 @@ def main():
 
     # Parse
     args = parser.parse_args()
+    samplePickle = args.samplePickle
 
     # Read in objects
-    prj, sample, args = pickle.load(open(args.samplePickle, "rb"))
+    prj, sample, args = pickle.load(open(samplePickle, "rb"))
     # if doing the analysis part, require a tuple as "sample" and split it into sample and control
     if args.command == "analyse":
         if type(sample) is tuple:
@@ -47,7 +48,8 @@ def main():
         analyse(args, prj, sample, ctrl)
 
     # Remove pickle
-    "rm %s" % args.samplePickle
+    if not args.dry_run:
+        os.system("rm %s" % samplePickle)
 
     # Exit
     print("Finished and exiting.")
@@ -76,12 +78,9 @@ def preprocess(args, prj, sample):
     """
 
     print("Starting sample preprocessing.")
-    print(sample.name)
-    print(sample.dirs)
-    print(sample.dirs.unmapped)
 
     # Start Pypiper object
-    pipe = Pypiper("pipe", prj.dirs.logs, sample.name)
+    pipe = Pypiper("pipe", sample.dirs.sampleRoot)
 
     # keep track of temporary files
     tempFiles = list()
@@ -89,14 +88,12 @@ def preprocess(args, prj, sample):
     if args.stage in ["all"]:
         # if more than one technical replicate, merge bams
         if type(sample.unmappedBam) == list:
-            unmappedBam = os.path.join(sample.dirs.unmapped, sample.name + ".bam")
             cmd = tk.mergeBams(
                 inputBams=sample.unmappedBam,  # this is a list of sample paths
-                outputBam=unmappedBam
+                outputBam=sample.unmapped
             )
-            pipe.call_lock(cmd, unmappedBam)
-            # replace list with path to merged unmapped bam
-            sample.unmappedBam = unmappedBam
+            pipe.call_lock(cmd, sample.unmapped)
+            sample.unmappedBam = sample.unmapped
     if args.stage in ["all", "fastqc"]:
         # TODO:
         # Fastqc should be independent from this job but since there's no option in fastqc to specify

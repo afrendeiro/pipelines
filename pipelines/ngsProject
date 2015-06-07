@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Project managements and Sample loop.
+Project management and Sample loop.
 """
 
 from argparse import ArgumentParser
@@ -197,6 +197,10 @@ def sampleLoop(args, prj):
     for sample in prj.samples:
         # get jobname
         jobName = "_".join([runName, sample.sampleName])
+
+        # if unmappedBam is a list, add final "unmapped" attr to sample object
+        if type(sample.unmappedBam) is list:
+            sample.unmapped = os.path.join(sample.dirs.unmapped, sample.name + ".bam")
 
         # assemble command
         # slurm header

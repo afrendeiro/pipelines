@@ -189,7 +189,7 @@ def sampleLoop(args, prj):
     runName = "_".join([prj.name, time.strftime("%Y%m%d-%H%M%S")])
 
     # add track headers to track hubs
-    for genome in pd.DataFrame(prj.samples)["genome"].unique():
+    for genome in pd.Series([s.genome for s in prj.samples]).unique():
         with open(os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(genome)), "w") as handle:
             handle.write("browser position chr21:28,049,584-38,023,583\n")
 

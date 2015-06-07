@@ -226,7 +226,7 @@ class SampleSheet(object):
 
     from pipelines import Project, SampleSheet
     prj = Project("ngs")
-    sheet = SampleSheet("/projects/example/sheet.csv", prj)
+    sheet = SampleSheet("/projects/example/sheet.csv")
     """
     def __init__(self, csv, **kwargs):
 
@@ -257,11 +257,17 @@ class SampleSheet(object):
     def __repr__(self):
         return "SampleSheet for project '%s'" % self.project
 
-    def asDataFrame(self):
+    def asDataFrame(self, all=True):
         """
         Returns a `pandas.DataFrame` representation of self.
         """
-        return _pd.DataFrame(self.samples)
+        df = _pd.DataFrame([s.asSeries() for s in self.samples])
+
+        # Filter some columns out
+        if not all:
+            df = df[["sampleName"] + self._columns + ["mapped"]]
+
+        return df
 
     def checkSheet(self):
         """
@@ -336,12 +342,14 @@ class SampleSheet(object):
                     # append merged biological replicate to samples
                     self.samples.append(Sample(rep))
 
-    def to_csv(self, path):
+    def to_csv(self, path, all=False):
         """
         Saves a csv annotation sheet from the samples.
 
         :param path: Path to csv file to be written.
         :type path: str
+        :param all: If all sample attributes should be kept in the annotation sheet.
+        :type all: bool
 
         :Example:
 
@@ -349,14 +357,11 @@ class SampleSheet(object):
         sheet = SampleSheet("/projects/example/sheet.csv")
         sheet.to_csv("/projects/example/sheet2.csv")
         """
-        df = _pd.DataFrame(self.samples)
-        df = df[["sampleName"] + self._columns]
-        # add extra columns with sample attributes
-        df["mappedBam"] = [s.nodups for s in self.samples]
+        df = self.asDataFrame(all=all)
         df.to_csv(path, index=False)
 
 
-class Sample(_pd.Series):
+class Sample(object):
     """
     Class to model Samples basd on a pandas Series.
 
@@ -370,13 +375,20 @@ class Sample(_pd.Series):
     sheet = SampleSheet("/projects/example/sheet.csv", prj)
     s1 = Sample(sheet.ix[0])
     """
+    # Originally, this object was inheriting from _pd.Series,
+    # but complications with serializing and code maintenance
+    # made me go back and implement it as a top-level object
     def __init__(self, series):
         from os.path import expanduser
 
         # Passed series must either be a pd.Series or a daugther class
         if not isinstance(series, _pd.Series):
             raise TypeError("Provided object is not a pandas Series.")
-        super(Sample, self).__init__(series)
+        super(Sample, self).__init__()
+
+        # Set series attributes on self
+        for key, value in series.to_dict().items():
+            setattr(self, key, value)
 
         self.checkValid()
         self.generateName()
@@ -408,7 +420,7 @@ class Sample(_pd.Series):
         # call Sample.setFilePaths()
 
     def __repr__(self):
-        return "Sample '%s'" % self.sampleName
+        return "Sample '%s'" % self.name
 
     def checkValid(self):
         """
@@ -501,28 +513,28 @@ class Sample(_pd.Series):
         # Unmapped: merged bam, fastq, trimmed fastq
         self.dirs.unmapped = _os.path.join(self.dirs.sampleRoot, "unmapped", self.name)
         if self.readType == "SE":
-            self.fastq = self.dirs.unmapped + ".fastq"
+            self.fastq = _os.path.join(self.dirs.unmapped, self.name + ".fastq")
         else:
-            self.fastq1 = self.dirs.unmapped + ".1.fastq"
-            self.fastq2 = self.dirs.unmapped + ".2.fastq"
-            self.fastqUnpaired = self.dirs.unmapped + ".unpaired.fastq"
+            self.fastq1 = _os.path.join(self.dirs.unmapped, self.name + ".1.fastq")
+            self.fastq2 = _os.path.join(self.dirs.unmapped, self.name + ".2.fastq")
+            self.fastqUnpaired = _os.path.join(self.dirs.unmapped, self.name + ".unpaired.fastq")
         if self.readType == "SE":
-            self.trimmed = self.dirs.unmapped + ".trimmed.fastq"
+            self.trimmed = _os.path.join(self.dirs.unmapped, self.name + ".trimmed.fastq")
         else:
-            self.trimmed1 = self.dirs.unmapped + ".1.trimmed.fastq"
-            self.trimmed2 = self.dirs.unmapped + ".2.trimmed.fastq"
-            self.trimmed1Unpaired = self.dirs.unmapped + ".1_unpaired.trimmed.fastq"
-            self.trimmed2Unpaired = self.dirs.unmapped + ".2_unpaired.trimmed.fastq"
+            self.trimmed1 = _os.path.join(self.dirs.unmapped, self.name + ".1.trimmed.fastq")
+            self.trimmed2 = _os.path.join(self.dirs.unmapped, self.name + ".2.trimmed.fastq")
+            self.trimmed1Unpaired = _os.path.join(self.dirs.unmapped, self.name + ".1_unpaired.trimmed.fastq")
+            self.trimmed2Unpaired = _os.path.join(self.dirs.unmapped, self.name + ".2_unpaired.trimmed.fastq")
 
         # Mapped: mapped, duplicates marked, removed, reads shifted
         self.dirs.mapped = _os.path.join(self.dirs.sampleRoot, "mapped")
-        self.mapped = self.dirs.mapped + ".trimmed.bowtie2.bam"
-        self.dups = self.dirs.mapped + ".trimmed.bowtie2.dups.bam"
-        self.nodups = self.dirs.mapped + ".trimmed.bowtie2.nodups.bam"
+        self.mapped = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.bam")
+        self.dups = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.bam")
+        self.nodups = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.bam")
         # this will create additional bam files with reads shifted
         if self.tagmented:
-            self.dupsshifted = self.dirs.mapped + ".trimmed.bowtie2.dups.shifted.bam"
-            self.nodupsshifted = self.dirs.mapped + ".trimmed.bowtie2.nodups.shifted.bam"
+            self.dupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.shifted.bam")
+            self.nodupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.shifted.bam")
 
         # Project's public_html folder
         self.bigwig = _os.path.join(self.project.dirs.html, self.name + ".bigWig")
@@ -577,7 +589,7 @@ class ChIPseqSample(Sample):
         super(ChIPseqSample, self).__init__(series)
 
     def __repr__(self):
-        return "Sample '%s'" % self.sampleName
+        return "Sample '%s'" % self.name
 
     def setFilePaths(self):
         """
@@ -587,27 +599,26 @@ class ChIPseqSample(Sample):
         super(ChIPseqSample, self).setFilePaths()
 
         # Files in the root of the sample dir
-        self.frip = _os.path.join(self.dirs.sampleRoot, self.sampleName + "_FRiP.txt")
+        self.frip = _os.path.join(self.dirs.sampleRoot, self.name + "_FRiP.txt")
 
         # Mapped: mapped, duplicates marked, removed, reads shifted
-        mapped = _os.path.join(self.dirs.sampleRoot, "mapped")
         # this will create additional bam files with reads shifted
         if self.tagmented:
-            self.dupsshifted = mapped + ".trimmed.bowtie2.dups.shifted.bam"
-            self.nodupsshifted = mapped + ".trimmed.bowtie2.nodups.shifted.bam"
+            self.dupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.shifted.bam")
+            self.nodupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.shifted.bam")
 
         # Coverage: read coverage in windows genome-wide
         self.dirs.coverage = _os.path.join(self.dirs.sampleRoot, "coverage")
         self.coverage = _os.path.join(self.dirs.coverage, self.name + ".cov")
 
         # Peaks: peaks called and derivate files
-        self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, self.sampleName + "_peaks")
-        self.peaks = _os.path.join(self.dirs.sampleRoot, self.sampleName + "_peaks" + (".narrowPeak" if not self.broad else ".broadPeak"))
-        self.peaksMotifCentered = _os.path.join(self.dirs.peaks, self.sampleName + "_peaks.motifCentered.bed")
-        self.peaksMotifAnnotated = _os.path.join(self.dirs.peaks, self.sampleName + "_peaks.motifAnnotated.bed")
+        self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks")
+        self.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks" + (".narrowPeak" if not self.broad else ".broadPeak"))
+        self.peaksMotifCentered = _os.path.join(self.dirs.peaks, self.name + "_peaks.motifCentered.bed")
+        self.peaksMotifAnnotated = _os.path.join(self.dirs.peaks, self.name + "_peaks.motifAnnotated.bed")
 
         # Motifs
-        self.dirs.motifs = _os.path.join(self.dirs.sampleRoot, "motifs", self.sampleName)
+        self.dirs.motifs = _os.path.join(self.dirs.sampleRoot, "motifs", self.name)
 
 
 class CMSample(ChIPseqSample):
@@ -625,7 +636,7 @@ class CMSample(ChIPseqSample):
         super(CMSample, self).__init__(series)
 
     def __repr__(self):
-        return "CM sample '%s'" % self.sampleName
+        return "CM sample '%s'" % self.name
 
 
 class DNaseSample(ChIPseqSample):
@@ -643,7 +654,7 @@ class DNaseSample(ChIPseqSample):
         super(DNaseSample, self).__init__(series)
 
     def __repr__(self):
-        return "DNase-seq sample '%s'" % self.sampleName
+        return "DNase-seq sample '%s'" % self.name
 
 
 class ATACseqSample(ChIPseqSample):
@@ -661,4 +672,4 @@ class ATACseqSample(ChIPseqSample):
         super(ATACseqSample, self).__init__(series)
 
     def __repr__(self):
-        return "ATAC-seq sample '%s'" % self.sampleName
+        return "ATAC-seq sample '%s'" % self.name

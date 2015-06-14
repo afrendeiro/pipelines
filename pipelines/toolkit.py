@@ -69,13 +69,9 @@ def mergeBams(inputBams, outputBam):
 
 
 def fastqc(inputBam, outputDir):
-    cmd1 = "module load java/jdk/1.7.0_65"
+    cmd = "fastqc --noextract --outdir {0} {1}".format(outputDir, inputBam)
 
-    cmd2 = "module load FastQC/0.11.2"
-
-    cmd3 = "fastqc --noextract --outdir {0} {1}".format(outputDir, inputBam)
-
-    return [cmd1, cmd2, cmd3]
+    return cmd
 
 
 def bam2fastq(inputBam, outputFastq, outputFastq2=None, unpairedFastq=None):
@@ -96,21 +92,19 @@ def trimmomatic(inputFastq1, outputFastq1, cpus, adapters, log,
     PE = False if inputFastq2 is None else True
     pe = "PE" if PE else "SE"
 
-    cmd1 = "module load trimmomatic/0.32"
-
-    cmd2 = "java -Xmx4g -jar `which trimmomatic-0.32.jar`"
-    cmd2 += " {0} -threads {1} -trimlog {2} {3}".format(pe, cpus, log, inputFastq1)
+    cmd = "java -Xmx4g -jar `which trimmomatic-0.32.jar`"
+    cmd += " {0} -threads {1} -trimlog {2} {3}".format(pe, cpus, log, inputFastq1)
     if PE:
-        cmd2 += " {0}".format(inputFastq2)
-    cmd2 += " {0}".format(outputFastq1)
+        cmd += " {0}".format(inputFastq2)
+    cmd += " {0}".format(outputFastq1)
     if PE:
-        cmd2 += " {0} {1} {2}".format(outputFastq1unpaired, outputFastq2, outputFastq2unpaired)
-    cmd2 += " ILLUMINACLIP:{0}:1:40:15:8:true".format(adapters)
-    cmd2 += " LEADING:3 TRAILING:3"
-    cmd2 += " SLIDINGWINDOW:4:10"
-    cmd2 += " MINLEN:36"
+        cmd += " {0} {1} {2}".format(outputFastq1unpaired, outputFastq2, outputFastq2unpaired)
+    cmd += " ILLUMINACLIP:{0}:1:40:15:8:true".format(adapters)
+    cmd += " LEADING:3 TRAILING:3"
+    cmd += " SLIDINGWINDOW:4:10"
+    cmd += " MINLEN:36"
 
-    return [cmd1, cmd2]
+    return cmd
 
 
 def skewer(inputFastq1, outputPrefix, cpus, adapters, inputFastq2=None):
@@ -135,22 +129,18 @@ def bowtie2Map(inputFastq1, outputBam, log, metrics, genomeIndex, maxInsert, cpu
 
     outputBam = re.sub("\.bam$", "", outputBam)
     # Admits 2000bp-long fragments (--maxins option)
-    cmd1 = "module load bowtie/2.2.3"
-
-    cmd2 = "module load samtools"
-
-    cmd3 = "bowtie2 --very-sensitive -p {0}".format(cpus)
-    cmd3 += " -x {0}".format(genomeIndex)
-    cmd3 += " --met-file {0}".format(metrics)
+    cmd = "bowtie2 --very-sensitive -p {0}".format(cpus)
+    cmd += " -x {0}".format(genomeIndex)
+    cmd += " --met-file {0}".format(metrics)
     if inputFastq2 is None:
-        cmd3 += " {0} ".format(inputFastq1)
+        cmd += " {0} ".format(inputFastq1)
     else:
-        cmd3 += " --maxins {0}".format(maxInsert)
-        cmd3 += " -1 {1}".format(inputFastq1)
-        cmd3 += " -2 {2}".format(inputFastq2)
-    cmd3 += " 2> {0} | samtools view -S -b - | samtools sort - {1}".format(log, outputBam)
+        cmd += " --maxins {0}".format(maxInsert)
+        cmd += " -1 {1}".format(inputFastq1)
+        cmd += " -2 {2}".format(inputFastq2)
+    cmd += " 2> {0} | samtools view -S -b - | samtools sort - {1}".format(log, outputBam)
 
-    return [cmd1, cmd2, cmd3]
+    return cmd
 
 
 def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
@@ -159,22 +149,20 @@ def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
     transientFile = re.sub("\.bam$", "", outputBam) + ".dups.nosort.bam"
     outputBam = re.sub("\.bam$", "", outputBam)
 
-    cmd1 = "module load samtools"
-
-    cmd2 = "java -Xmx4g -jar /cm/shared/apps/picard-tools/1.118/MarkDuplicates.jar"
-    cmd2 += " INPUT={0}".format(inputBam)
-    cmd2 += " OUTPUT={0}".format(transientFile)
-    cmd2 += " METRICS_FILE={0}".format(metricsFile)
-    cmd2 += " VALIDATION_STRINGENCY=LENIENT"
-    cmd2 += " TMP_DIR={0}".format(tempDir)
+    cmd1 = "java -Xmx4g -jar `which MarkDuplicates.jar`"
+    cmd1 += " INPUT={0}".format(inputBam)
+    cmd1 += " OUTPUT={0}".format(transientFile)
+    cmd1 += " METRICS_FILE={0}".format(metricsFile)
+    cmd1 += " VALIDATION_STRINGENCY=LENIENT"
+    cmd1 += " TMP_DIR={0}".format(tempDir)
 
     # Sort bam file with marked duplicates
-    cmd3 = "samtools sort {1} {4}".format(transientFile, outputBam)
+    cmd2 = "samtools sort {1} {4}".format(transientFile, outputBam)
 
     # Remove transient file
-    cmd4 = "if [[ -s {1} ]]; then rm {1}; fi".format(transientFile)
+    cmd3 = "if [[ -s {1} ]]; then rm {1}; fi".format(transientFile)
 
-    return [cmd1, cmd2, cmd3, cmd4]
+    return [cmd1, cmd2, cmd3]
 
 
 def removeDuplicates(inputBam, outputBam, cpus=16):
@@ -187,30 +175,25 @@ def shiftReads(inputBam, genome, outputBam):
     import re
 
     outputBam = re.sub("\.bam$", "", outputBam)
-    cmd1 = "module load samtools"
 
-    cmd2 = "samtools view -h {0} |".format(inputBam)
-    cmd2 += " shift_reads.py {0} |".format(genome)
-    cmd2 += " samtools view -S -b - |"
-    cmd2 += " samtools sort - {0}".format(outputBam)
+    cmd = "samtools view -h {0} |".format(inputBam)
+    cmd += " shift_reads.py {0} |".format(genome)
+    cmd += " samtools view -S -b - |"
+    cmd += " samtools sort - {0}".format(outputBam)
 
-    return [cmd1, cmd2]
+    return cmd
 
 
 def indexBam(inputBam):
-    # module load samtools
     cmd = "samtools index {0}".format(inputBam)
 
     return cmd
 
 
 def peakTools(inputBam, output, plot, cpus):
-    cmd1 = "module load boost/1.57"
-    cmd2 = "module load gcc/4.8.2"
-    cmd3 = "module load openmpi/gcc/64/1.8.1"
-    cmd4 = "run_spp.R -rf -savp -savp={2} -s=0:5:500 -c={0} -out={1}".format(inputBam, output, plot)
+    cmd = "run_spp.R -rf -savp -savp={2} -s=0:5:500 -c={0} -out={1}".format(inputBam, output, plot)
 
-    return [cmd1, cmd2, cmd3, cmd4]
+    return cmd
 
 
 def qc():
@@ -234,24 +217,22 @@ def bamToBigWig(inputBam, outputBigWig, genomeSizes, genome, tagmented=False):
 
     transientFile = os.path.abspath(re.sub("\.bigWig", "", outputBigWig))
 
-    cmd1 = "module load bedtools"
-
-    cmd2 = "bedtools bamtobed -i {0} |".format(inputBam)
+    cmd1 = "bedtools bamtobed -i {0} |".format(inputBam)
     if not tagmented:
-        cmd2 += " bedtools slop -i stdin -g {0} -s -l 0 -r 130 |".format(genomeSizes)
-        cmd2 += " python fix_bedfile_genome_boundaries.py {0} |".format(genome)
+        cmd1 += " bedtools slop -i stdin -g {0} -s -l 0 -r 130 |".format(genomeSizes)
+        cmd1 += " fix_bedfile_genome_boundaries.py {0} |".format(genome)
     else:
-        cmd2 = "bedtools bamtobed -i {0} |".format(inputBam)
-        cmd2 += " get5primePosition.py |"
-    cmd2 += " genomeCoverageBed -i stdin -bg -g {0} > {1}.cov".format(genomeSizes, transientFile)
+        cmd1 = "bedtools bamtobed -i {0} |".format(inputBam)
+        cmd1 += " get5primePosition.py |"
+    cmd1 += " genomeCoverageBed -i stdin -bg -g {0} > {1}.cov".format(genomeSizes, transientFile)
 
-    cmd3 = "bedGraphToBigWig {0}.cov {1} {2}".format(transientFile, genomeSizes, outputBigWig)
+    cmd2 = "bedGraphToBigWig {0}.cov {1} {2}".format(transientFile, genomeSizes, outputBigWig)
     # remove cov file
-    cmd4 = "if [[ -s {0}.cov ]]; then rm {0}.cov; fi".format(transientFile)
+    cmd3 = "if [[ -s {0}.cov ]]; then rm {0}.cov; fi".format(transientFile)
 
-    cmd5 = "chmod 755 {0}".format(outputBigWig)
+    cmd4 = "chmod 755 {0}".format(outputBigWig)
 
-    return [cmd1, cmd2, cmd3, cmd4, cmd5]
+    return [cmd1, cmd2, cmd3, cmd4]
 
 
 def addTrackToHub(sampleName, trackURL, trackHub, colour, fivePrime=""):
@@ -283,20 +264,17 @@ def linkToTrackHub(trackHubURL, fileName, genome):
 
 
 def genomeWideCoverage(inputBam, genomeWindows, output):
-    cmd1 = "module load bedtools"
-    cmd2 = "bedtools coverage -abam -counts -a {0} -b {1} > {2}".format(inputBam, genomeWindows, output)
+    cmd = "bedtools coverage -abam -counts -a {0} -b {1} > {2}".format(inputBam, genomeWindows, output)
 
-    return [cmd1, cmd2]
+    return cmd
 
 
 def calculateFRiP(inputBam, inputBed, output):
-    cmd1 = "module load bedtools"
+    cmd = "cut -f 1,2,3 {0} |".format(inputBed)
+    cmd += " bedtools coverage -counts -abam {0} -b - |".format(inputBam)
+    cmd += " awk '{{sum+=$4}} END {{print sum}}' > {0}".format(output)
 
-    cmd2 = "cut -f 1,2,3 {0} |".format(inputBed)
-    cmd2 += " bedtools coverage -counts -abam {0} -b - |".format(inputBam)
-    cmd2 += " awk '{{sum+=$4}} END {{print sum}}' > {0}".format(output)
-
-    return [cmd1, cmd2]
+    return cmd
 
 
 def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broad=False, plot=True):
@@ -319,44 +297,36 @@ def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broa
 def macs2PlotModel(treatmentBam, controlBam, outputDir, sampleName, genome, broad=False, plot=True):
     import os
 
-    cmd1 = "module load R"
-
     # run macs r script
-    cmd2 = "Rscript {0}/{1}_model.r".format(outputDir, sampleName, os.getcwd())
+    cmd1 = "Rscript {0}/{1}_model.r".format(outputDir, sampleName, os.getcwd())
     # move to sample dir
-    cmd3 = "mv {2}/{1}_model.pdf {0}/{1}_model.pdf".format(outputDir, sampleName, os.getcwd())
+    cmd2 = "mv {2}/{1}_model.pdf {0}/{1}_model.pdf".format(outputDir, sampleName, os.getcwd())
 
-    return [cmd1, cmd2, cmd3]
+    return [cmd1, cmd2]
 
 
 def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir, broad, cpus):
     broad = "TRUE" if broad else "FALSE"
 
-    cmd1 = "module load R"
-
-    cmd2 = "Rscript spp_peak_calling.R {0} {1} {2} {3} {4} {5} {6}""".format(
+    cmd = "Rscript spp_peak_calling.R {0} {1} {2} {3} {4} {5} {6}""".format(
         treatmentBam, controlBam, treatmentName, controlName, broad, cpus, outputDir
     )
 
-    return [cmd1, cmd2]
+    return cmd
 
 
 def bamToBed(inputBam, outputBed):
-    cmd1 = "module load bedtools"
+    cmd = "bedtools bamtobed -i {0} > {1}".format(inputBam, outputBed)
 
-    cmd2 = "bedtools bamtobed -i {0} > {1}".format(inputBam, outputBed)
-
-    return [cmd1, cmd2]
+    return cmd
 
 
 def zinbaCallPeaks(treatmentBed, controlBed, cpus, tagmented=False):
     fragmentLength = 80 if tagmented else 180
 
-    cmd1 = "module load R"  # module load R/3.1.0
+    cmd = "Rscript zinba.R -l {0} -t {1} -c {2}".format(fragmentLength, treatmentBed, controlBed)
 
-    cmd2 = "Rscript zinba.R -l {0} -t {1} -c {2}".format(fragmentLength, treatmentBed, controlBed)
-
-    return [cmd1, cmd2]
+    return cmd
 
 
 def homerFindMotifs(peakFile, genome, outputDir, size=150, length="8,10,12,14,16", n_motifs=12):
@@ -440,11 +410,9 @@ def plotCorrelations(inputCoverage, plotsDir):
 
 def diffBind(inputCSV, jobName, plotsDir):
     import os
-    cmd1 = "module load R"
-
-    cmd2 = "Rscript {3}/lib/diffBind_analysis.R {0} {1} {2}".format(
+    cmd = "Rscript {3}/lib/diffBind_analysis.R {0} {1} {2}".format(
         inputCSV, jobName, plotsDir,
         os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
     )
 
-    return [cmd1, cmd2]
+    return cmd

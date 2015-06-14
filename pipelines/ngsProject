@@ -75,7 +75,7 @@ def mainArgParser(parser):
                         help="Don't check file existence and integrity. Default=False.")
 
     # Slurm-related
-    parser.add_argument("-c", "--cpus", default=None, dest="cpus",
+    parser.add_argument("-c", "--cpus", default=4, dest="cpus",
                         help="Number of CPUs to use. Default is specified in the pipeline config file.", type=int)
     parser.add_argument("-m", "--mem-per-cpu", default=4000, dest="mem",
                         help="Memory per CPU to use. Default is specified in the pipeline config file.", type=int)

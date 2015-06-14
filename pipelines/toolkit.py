@@ -114,10 +114,10 @@ def skewer(inputFastq1, outputPrefix, cpus, adapters, inputFastq2=None):
 
     cmd = "skewer --quiet"
     cmd += " -t {0}".format(cpus)
-    cmd += " -m {1}".format(mode)
-    cmd += " -x {2}".format(adapters)
-    cmd += " -o {3}".format(outputPrefix)
-    cmd += " {4}".format(inputFastq1)
+    cmd += " -m {0}".format(mode)
+    cmd += " -x {0}".format(adapters)
+    cmd += " -o {0}".format(outputPrefix)
+    cmd += " {0}".format(inputFastq1)
     if inputFastq2 is not None:
         cmd += " {0}".format(inputFastq2)
 
@@ -136,8 +136,8 @@ def bowtie2Map(inputFastq1, outputBam, log, metrics, genomeIndex, maxInsert, cpu
         cmd += " {0} ".format(inputFastq1)
     else:
         cmd += " --maxins {0}".format(maxInsert)
-        cmd += " -1 {1}".format(inputFastq1)
-        cmd += " -2 {2}".format(inputFastq2)
+        cmd += " -1 {0}".format(inputFastq1)
+        cmd += " -2 {0}".format(inputFastq2)
     cmd += " 2> {0} | samtools view -S -b - | samtools sort - {1}".format(log, outputBam)
 
     return cmd
@@ -157,16 +157,16 @@ def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
     cmd1 += " TMP_DIR={0}".format(tempDir)
 
     # Sort bam file with marked duplicates
-    cmd2 = "samtools sort {1} {4}".format(transientFile, outputBam)
+    cmd2 = "samtools sort {0} {1}".format(transientFile, outputBam)
 
     # Remove transient file
-    cmd3 = "if [[ -s {1} ]]; then rm {1}; fi".format(transientFile)
+    cmd3 = "if [[ -s {0} ]]; then rm {0}; fi".format(transientFile)
 
     return [cmd1, cmd2, cmd3]
 
 
 def removeDuplicates(inputBam, outputBam, cpus=16):
-    cmd = "sambamba markdup -t {2} -r {0} {1}".format(inputBam, outputBam, cpus)
+    cmd = "sambamba markdup -t {0} -r {1} {2}".format(cpus, inputBam, outputBam)
 
     return cmd
 
@@ -191,7 +191,7 @@ def indexBam(inputBam):
 
 
 def peakTools(inputBam, output, plot, cpus):
-    cmd = "run_spp.R -rf -savp -savp={2} -s=0:5:500 -c={0} -out={1}".format(inputBam, output, plot)
+    cmd = "run_spp.R -rf -savp -savp={0} -s=0:5:500 -c={1} -out={2}".format(plot, inputBam, output)
 
     return cmd
 
@@ -298,9 +298,9 @@ def macs2PlotModel(treatmentBam, controlBam, outputDir, sampleName, genome, broa
     import os
 
     # run macs r script
-    cmd1 = "Rscript {0}/{1}_model.r".format(outputDir, sampleName, os.getcwd())
+    cmd1 = "Rscript {0}/{1}_model.r".format(os.getcwd(), sampleName)
     # move to sample dir
-    cmd2 = "mv {2}/{1}_model.pdf {0}/{1}_model.pdf".format(outputDir, sampleName, os.getcwd())
+    cmd2 = "mv {0}/{1}_model.pdf {2}/{1}_model.pdf".format(os.getcwd(), sampleName, outputDir)
 
     return [cmd1, cmd2]
 
@@ -332,7 +332,7 @@ def zinbaCallPeaks(treatmentBed, controlBed, cpus, tagmented=False):
 def homerFindMotifs(peakFile, genome, outputDir, size=150, length="8,10,12,14,16", n_motifs=12):
 
     cmd = "findMotifsGenome.pl {0} {1} {2}".format(peakFile, genome, outputDir)
-    cmd += " -mask -size {3} -len {4} -S {5}".format(size, length, n_motifs)
+    cmd += " -mask -size {0} -len {1} -S {2}".format(size, length, n_motifs)
 
     return cmd
 
@@ -347,9 +347,9 @@ def AnnotatePeaks(peakFile, genome, motifFile, outputBed):
 def centerPeaksOnMotifs(peakFile, genome, windowWidth, motifFile, outputBed):
 
     cmd = "annotatePeaks.pl {0} {1} -size {2} -center {3} |".format(peakFile, genome, windowWidth, motifFile)
-    cmd += " awk -v OFS='\t' '{{print $2, $3, $4, $1, $6, $5}}' |"
-    cmd += """ awk -v OFS='\t' -F '\t' '{{ gsub("0", "+", $6) ; gsub("1", "-", $6) ; print }}' |"""
-    cmd += " fix_bedfile_genome_boundaries.py {1} | sortBed > {4}".format(genome, outputBed)
+    cmd += " awk -v OFS='\t' '{print $2, $3, $4, $1, $6, $5}' |"
+    cmd += """ awk -v OFS='\t' -F '\t' '{ gsub("0", "+", $6) ; gsub("1", "-", $6) ; print }' |"""
+    cmd += " fix_bedfile_genome_boundaries.py {0} | sortBed > {1}".format(genome, outputBed)
 
     return cmd
 
@@ -381,7 +381,7 @@ def tssAnalysis(inputBam, tssFile, plotsDir, windowWidth, fragmentsize, genome,
         os.path.abspath(os.path.dirname(os.path.realpath(__file__))),
         inputBam, tssFile, plotsDir
     )
-    cmd += " --window-width {4} --fragment-size {5} --genome {6} --n_clusters {7}".format(
+    cmd += " --window-width {0} --fragment-size {1} --genome {2} --n_clusters {3}".format(
         windowWidth, fragmentsize, genome, n_clusters
     )
     if strand_specific:

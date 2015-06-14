@@ -86,6 +86,7 @@ def preprocess(args, prj, sample):
     tempFiles = list()
 
     if args.stage in ["all"]:
+        pipe.timestamp("Merging bam files from replicates")
         # if more than one technical replicate, merge bams
         if type(sample.unmappedBam) == list:
             cmd = tk.mergeBams(
@@ -95,6 +96,7 @@ def preprocess(args, prj, sample):
             pipe.call_lock(cmd, sample.unmapped)
             sample.unmappedBam = sample.unmapped
     if args.stage in ["all", "fastqc"]:
+        pipe.timestamp("Measuring sample quality with Fastqc")
         # TODO:
         # Fastqc should be independent from this job but since there's no option in fastqc to specify
         # the sample name, I'll for now run it on the already renamed fastq file produced before,
@@ -106,6 +108,7 @@ def preprocess(args, prj, sample):
         pipe.call_lock(cmd, sample.dirs.sampleRoot + sample.sampleName + ".zip")
     # convert bam to fastq
     if args.stage in ["all", "bam2fastq"]:
+        pipe.timestamp("Converting to Fastq format")
         if not sample.paired:
             cmd = tk.bam2fastq(
                 inputBam=sample.unmappedBam,
@@ -126,6 +129,7 @@ def preprocess(args, prj, sample):
             tempFiles.append(sample.fastqUnpaired)
 
     if args.stage in ["all", "trim"]:
+        pipe.timestamp("Trimming adapters from sample")
         # TODO:
         # Change absolute path to something usable by everyone or to an option.
         if args.trimmer == "trimmomatic":
@@ -164,25 +168,30 @@ def preprocess(args, prj, sample):
                     os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed.fastq"),
                     sample.trimmed
                 )
+                pipe.call_lock(cmd, sample.trimmed)
                 tempFiles.append(sample.trimmed)
             else:
                 cmd = tk.moveFile(
                     os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed-pair1.fastq"),
                     sample.trimmed1
                 )
+                pipe.call_lock(cmd, sample.trimmed1)
+                tempFiles.append(sample.trimmed1)
                 cmd = tk.moveFile(
                     os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed-pair2.fastq"),
                     sample.trimmed2
                 )
-                tempFiles.append(sample.trimmed1)
+                pipe.call_lock(cmd, sample.trimmed2)
                 tempFiles.append(sample.trimmed2)
             # move log to results dir
             cmd = tk.moveFile(
                 os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed.log"),
                 sample.trimlog
             )
+            pipe.call_lock(cmd, sample.trimlog)
 
     if args.stage in ["all", "mapping"]:
+        pipe.timestamp("Mapping reads with Bowtie2")
         cmd = tk.bowtie2Map(
             inputFastq1=sample.trimmed1 if sample.paired else sample.trimmed,
             inputFastq2=sample.trimmed1 if sample.paired else None,
@@ -193,16 +202,18 @@ def preprocess(args, prj, sample):
             maxInsert=args.maxinsert,
             cpus=args.cpus
         )
-        pipe.call_lock(cmd, sample.mapped)
+        pipe.call_lock(cmd, sample.mapped, shell=True)
         tempFiles.append(sample.mapped)
     if args.stage in ["all", "markduplicates"]:
+        pipe.timestamp("Marking duplicates with piccard")
         cmd = tk.markDuplicates(
             inputBam=sample.mapped,
             outputBam=sample.dups,
             metricsFile=sample.dupsMetrics
         )
-        pipe.call_lock(cmd, sample.dups)
+        pipe.call_lock(cmd, sample.dups, shell=True)
     if args.stage in ["all", "removeduplicates"]:
+        pipe.timestamp("Removing duplicates with sambamba")
         cmd = tk.removeDuplicates(
             inputBam=sample.dups,
             outputBam=sample.nodups,
@@ -210,20 +221,22 @@ def preprocess(args, prj, sample):
         )
         pipe.call_lock(cmd, sample.nodups)
     if args.stage in ["all", "shiftreads"]:
+        pipe.timestamp("Shifting reads of tagmented sample")
         if sample.tagmented:
             cmd = tk.shiftReads(
                 inputBam=sample.dups,
                 genome=sample.genome,
                 outputBam=sample.dupsshifted
             )
-            pipe.call_lock(cmd, sample.dupsshifted)
+            pipe.call_lock(cmd, sample.dupsshifted, shell=True)
             cmd = tk.shiftReads(
                 inputBam=sample.nodups,
                 genome=sample.genome,
                 outputBam=sample.nodupsshifted
             )
-            pipe.call_lock(cmd, sample.nodupsshifted)
+            pipe.call_lock(cmd, sample.nodupsshifted, shell=True)
     if args.stage in ["all", "indexbam"]:
+        pipe.timestamp("Indexing bamfile with samtools")
         for s in [sample.dups, sample.nodups]:
             cmd = tk.indexBam(inputBam=s)
             pipe.call_lock(cmd, s + ".bai")
@@ -234,33 +247,35 @@ def preprocess(args, prj, sample):
 
     if args.stage in ["all", "maketracks"]:
         # right now tracks are only made for bams without duplicates
-        cmd = tk.bamToUCSC(
+        pipe.timestamp("Making bigWig tracks from bam file")
+        cmd = tk.bamToBigWig(
             inputBam=sample.nodups,
             outputBigWig=sample.bigwig,
             genomeSizes=prj.config["annotations"]["chrsizes"][sample.genome],
             genome=sample.genome,
             tagmented=sample.tagmented
         )
-        pipe.call_lock(cmd, sample.bigwig)
+        pipe.call_lock(cmd, sample.bigwig, shell=True)
         cmd = tk.addTrackToHub(
             sampleName=sample.sampleName,
             trackURL=sample.trackURL,
             trackHub=os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(sample.genome)),
             colour=sample.trackColour
         )
-        pipe.call_lock(cmd, shell=True)
+        pipe.call_lock(cmd, os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(sample.genome)), shell=True)
         tk.linkToTrackHub(
             trackHubURL=os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(sample.genome)),
             fileName=os.path.join(prj.dirs.root, "ucsc_tracks_{0}.html".format(sample.genome)),
             genome=sample.genome
         )
     if args.stage in ["all", "coverage"]:
+        pipe.timestamp("Calculating genome-wide coverage")
         cmd = tk.genomeWideCoverage(
             inputBam=sample.nodups,
             genomeWindows=prj.config["annotations"]["genomewindows"][sample.genome],
             output=sample.coverage
         )
-        pipe.call_lock(cmd, sample.coverage)
+        pipe.call_lock(cmd, sample.coverage, shell=True)
 
     # Remove intermediary files
     if args.stage == "all" and not args.keep_tmp:

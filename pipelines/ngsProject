@@ -371,19 +371,23 @@ def getReadType(bamFile, n=10):
     :rtype: tuple
     """
     from collections import Counter
-    p = subprocess.Popen(['samtools', 'view', bamFile], stdout=subprocess.PIPE)
+    try:
+        p = subprocess.Popen(['samtools', 'view', bamFile], stdout=subprocess.PIPE)
 
-    # Count paired alignments
-    paired = 0
-    readLength = Counter()
-    while n > 0:
-        line = p.stdout.next().split("\t")
-        flag = int(line[1])
-        readLength[len(line[9])] += 1
-        if 1 & flag:  # check decimal flag contains 1 (paired)
-            paired += 1
-        n -= 1
-    p.kill()
+        # Count paired alignments
+        paired = 0
+        readLength = Counter()
+        while n > 0:
+            line = p.stdout.next().split("\t")
+            flag = int(line[1])
+            readLength[len(line[9])] += 1
+            if 1 & flag:  # check decimal flag contains 1 (paired)
+                paired += 1
+            n -= 1
+        p.kill()
+    except:
+        print("Cannot read provided bam file.")
+        raise
 
     # Get most abundant read readLength
     readLength = sorted(readLength)[-1]

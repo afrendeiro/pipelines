@@ -1,11 +1,9 @@
-ChIP-seq pipelines
+pipelines
 =========
-ChIP-seq pipelines in Python
+pipelines in Python
 ---------
 
-[![Code Health](https://landscape.io/github/afrendeiro/chipseq-pipelines/master/landscape.svg?style=flat)](https://landscape.io/github/afrendeiro/chipseq-pipelines/master)
-
-Tasks include raw sequencing quality control, adapter removal, read trimming, mapping, peak calling, peak annotation, target gene annotation, GO analysis and more. 
+[![Code Health](https://landscape.io/github/afrendeiro/pipelines/master/landscape.svg?style=flat)](https://landscape.io/github/afrendeiro/pipelines/master)
 
 # Instalation
 I recommend creating a virtual environment to install dependencies to running the pipeline.

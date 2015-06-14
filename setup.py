@@ -16,7 +16,14 @@ setup(
     license="GPL2",
     packages=["pipelines"],
     install_requires=["numpy", "pandas"],
-    scripts=["pipelines/ngsProject", "pipelines/chipseq-pipeline"],
+    scripts=[
+        "pipelines/ngsProject",
+        "pipelines/chipseq-pipeline",
+        "lib/shift_reads.py",
+        "lib/fix_bedfile_genome_boundaries.py",
+        "lib/get5primePosition.py",
+        "lib/spp_peak_calling.R"
+    ],
     include_package_data=True,
     zip_safe=False
 )

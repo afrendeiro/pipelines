@@ -299,9 +299,12 @@ class SampleSheet(object):
                 self.samples.append(DNaseSample(self.df.ix[sample]))
             elif technique in self.config["techniques"]["atacseq"]:
                 self.samples.append(ATACseqSample(self.df.ix[sample]))
+            elif technique in self.config["techniques"]["quantseq"]:
+                self.samples.append(QuantseqSample(self.df.ix[sample]))
             else:
+                raise TypeError("Sample is not in known sample class.")
                 # I might want to change this behaviour
-                self.samples.append(Sample(self.df.ix[sample]))
+                # self.samples.append(Sample(self.df.ix[sample]))
 
     def getBiologicalReplicates(self):
         """
@@ -533,14 +536,6 @@ class Sample(object):
         self.mapped = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.bam")
         self.dups = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.bam")
         self.nodups = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.bam")
-        # this will create additional bam files with reads shifted
-        if self.tagmented:
-            self.dupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.shifted.bam")
-            self.nodupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.shifted.bam")
-
-        # Coverage: read coverage in windows genome-wide
-        self.dirs.coverage = _os.path.join(self.dirs.sampleRoot, "coverage")
-        self.coverage = _os.path.join(self.dirs.coverage, self.name + ".cov")
 
         # Project's public_html folder
         self.bigwig = _os.path.join(self.project.dirs.html, self.name + ".bigWig")
@@ -613,6 +608,10 @@ class ChIPseqSample(Sample):
             self.dupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.shifted.bam")
             self.nodupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.shifted.bam")
 
+        # Coverage: read coverage in windows genome-wide
+        self.dirs.coverage = _os.path.join(self.dirs.sampleRoot, "coverage")
+        self.coverage = _os.path.join(self.dirs.coverage, self.name + ".cov")
+
         # Peaks: peaks called and derivate files
         self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks")
         self.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks" + (".narrowPeak" if not self.broad else ".broadPeak"))
@@ -675,3 +674,51 @@ class ATACseqSample(ChIPseqSample):
 
     def __repr__(self):
         return "ATAC-seq sample '%s'" % self.name
+
+
+class QuantseqSample(Sample):
+    """
+    Class to model Quant-seq samples based on the generic Sample class (itself a pandas.Series).
+
+    :param series: Pandas `Series` object.
+    :type series: pandas.Series
+
+    :Example:
+
+    from pipelines import Project, SampleSheet, QuantseqSample
+    prj = Project("ngs")
+    sheet = SampleSheet("/projects/example/sheet.csv", prj)
+    s1 = QuantseqSample(sheet.ix[0])
+    """
+    def __init__(self, series):
+
+        # Passed series must either be a pd.Series or a daugther class
+        if not isinstance(series, _pd.Series):
+            raise TypeError("Provided object is not a pandas Series.")
+        super(QuantseqSample, self).__init__(series)
+
+    def __repr__(self):
+        return "Sample '%s'" % self.name
+
+    def setFilePaths(self):
+        """
+        Sets the paths of all files for this sample.
+        """
+        # Inherit paths from Sample by running Sample's setFilePaths()
+        super(QuantseqSample, self).setFilePaths()
+
+        # Mapped: Tophat mapped, duplicates marked, removed
+        self.dirs.mapped = _os.path.join(self.dirs.sampleRoot, "mapped")
+        self.mapped = _os.path.join(self.dirs.mapped, "accepted_hits.bam")
+        self.dups = _os.path.join(self.dirs.mapped, "accepted_hits.dups.bam")
+        self.nodups = _os.path.join(self.dirs.mapped, "accepted_hits.nodups.bam")
+        # ercc alignments
+        self.erccmapped = _os.path.join(self.dirs.mapped, self.name + "_ercc.bam")
+        self.erccdups = _os.path.join(self.dirs.mapped, self.name + "_ercc.dups.bam")
+        self.erccnodups = _os.path.join(self.dirs.mapped, self.name + "_ercc.nodups.bam")
+
+        # RNA quantification
+        self.dirs.quant = _os.path.join(self.dirs.sampleRoot, "quantification")
+        self.quant = _os.path.join(self.dirs.quant, "tophat-htseq_quantification.tsv")
+        self.erccquant = _os.path.join(self.dirs.quant, "tophat-htseq_quantification_ercc.tsv")
+        self.kallistoquant = _os.path.join(self.dirs.quant, "abundance.tsv")

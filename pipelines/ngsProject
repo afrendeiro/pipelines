@@ -243,8 +243,10 @@ def sampleLoop(args, prj):
             pickle.dump((prj, sample, args), open(samplePickle, "wb"))
 
         # Actual call to pipeline
-        # In the future this could be technique-dependent
-        jobCode += "chipseq-pipeline {0}\n".format(samplePickle)
+        if sample.technique in prj.config["techniques"]["chipseq"]:
+            jobCode += "chipseq-pipeline {0}\n".format(samplePickle)
+        elif sample.technique in prj.config["techniques"]["quantseq"]:
+            jobCode += "quantseq-pipeline {0}\n".format(samplePickle)
 
         # Slurm footer
         jobCode += tk.slurmFooter()

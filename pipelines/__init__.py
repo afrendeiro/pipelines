@@ -512,7 +512,8 @@ class Sample(object):
         self.dupsMetrics = _os.path.join(self.dirs.sampleRoot, self.name + ".duplicates.txt")
 
         # Unmapped: merged bam, fastq, trimmed fastq
-        self.dirs.unmapped = _os.path.join(self.dirs.sampleRoot, "unmapped", self.name)
+        self.dirs.unmapped = _os.path.join(self.dirs.sampleRoot, "unmapped")
+        self.unmapped = _os.path.join(self.dirs.unmapped, self.name + ".bam")
         if self.readType == "SE":
             self.fastq = _os.path.join(self.dirs.unmapped, self.name + ".fastq")
         else:

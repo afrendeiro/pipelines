@@ -279,12 +279,19 @@ def process(args, prj, sample):
 
         cmd = tk.macs2CallPeaks(
             treatmentBam=sample.nodups,
+            controlBam=sample.ctrl.nodups,
             outputDir=os.path.join(sample.dirs.peaks, sample.sampleName),
             sampleName=sample.sampleName,
             genome=sample.genome,
-            broad=True
+            broad=True if sample.broad else False
         )
         pipe.call_lock(cmd, sample.peaks, shell=True)
+
+        cmd = tk.macs2PlotModel(
+            sampleName=sample.sampleName,
+            outputDir=os.path.join(sample.dirs.peaks, sample.sampleName)
+        )
+        pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, sample.sampleName, sample.name + "_model.pdf"), shell=True)
     elif args.peak_caller == "zinba":
         raise NotImplementedError("Calling peaks with Zinba is not yet implemented.")
         # cmd = tk.bamToBed(

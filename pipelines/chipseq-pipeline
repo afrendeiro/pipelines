@@ -288,6 +288,12 @@ def process(args, prj, sample):
                 broad=True if sample.broad else False
             )
             pipe.call_lock(cmd, sample.peaks, shell=True)
+
+            cmd = tk.macs2PlotModel(
+                sampleName=sample.sampleName,
+                outputDir=os.path.join(sample.dirs.peaks, sample.sampleName)
+            )
+            pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, sample.sampleName, sample.name + "_model.pdf"), shell=True)
         elif args.peak_caller == "spp":
             # For point-source factors use default settings
             # For broad factors use broad settings

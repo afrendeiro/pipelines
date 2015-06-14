@@ -301,7 +301,7 @@ def calculateFRiP(inputBam, inputBed, output):
     return cmd
 
 
-def macs2CallPeaks(treatmentBam, outputDir, sampleName, genome, controlBam=None, broad=False, plot=True):
+def macs2CallPeaks(treatmentBam, outputDir, sampleName, genome, controlBam=None, broad=False):
     if not broad:
         cmd = "macs2 callpeak -t {0}".format(treatmentBam)
         if controlBam is not None:
@@ -321,7 +321,7 @@ def macs2CallPeaks(treatmentBam, outputDir, sampleName, genome, controlBam=None,
     return cmd
 
 
-def macs2PlotModel(treatmentBam, controlBam, outputDir, sampleName, genome, broad=False, plot=True):
+def macs2PlotModel(sampleName, outputDir):
     import os
 
     # run macs r script

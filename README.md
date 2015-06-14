@@ -1,7 +1,5 @@
 pipelines
 =========
-pipelines in Python
----------
 
 [![Code Health](https://landscape.io/github/afrendeiro/pipelines/master/landscape.svg?style=flat)](https://landscape.io/github/afrendeiro/pipelines/master)
 
@@ -24,7 +22,11 @@ Clone the repository
     git clone git@github.com:afrendeiro/pipelines.git
     cd pipelines
 
-Install module (it will install dependencies as well if these are not met):
+Install module:
+
+    python setup.py install
+
+with `pip`, dependencies will be installed as well if these are not met:
 
     pip install .
 

@@ -245,6 +245,12 @@ def sampleLoop(args, prj):
         # Actual call to pipeline
         if sample.technique in prj.config["techniques"]["chipseq"]:
             jobCode += "chipseq-pipeline {0}\n".format(samplePickle)
+        elif sample.technique in prj.config["techniques"]["cm"]:
+            jobCode += "chipseq-pipeline {0}\n".format(samplePickle)
+        elif sample.technique in prj.config["techniques"]["atacseq"]:
+            jobCode += "atacseq-pipeline {0}\n".format(samplePickle)
+        elif sample.technique in prj.config["techniques"]["dnase"]:
+            jobCode += "atacseq-pipeline {0}\n".format(samplePickle)
         elif sample.technique in prj.config["techniques"]["quantseq"]:
             jobCode += "quantseq-pipeline {0}\n".format(samplePickle)
 

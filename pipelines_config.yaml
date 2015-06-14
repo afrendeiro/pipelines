@@ -151,3 +151,5 @@ colourgradient: # 10 colour gradient from red to blue
     - "52,2,96"
     - "37,2,109"
     - "22,2,122"
+
+defaultposition: "chr21:28,049,584-38,023,583"

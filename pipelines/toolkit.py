@@ -280,8 +280,8 @@ def htSeqCount(inputBam, gff, output):
     return cmd
 
 
-def kallisto(inputFastq1, outputDir, genomeIndex, inputFastq2=None):
-    cmd = "kallisto quant --plaintext  -l 180 -i {0} -o {1} {2}".format(genomeIndex, outputDir, inputFastq1)
+def kallisto(inputFastq1, outputDir, transcriptomeIndex, inputFastq2=None):
+    cmd = "kallisto quant --plaintext  -l 180 -i {0} -o {1} {2}".format(transcriptomeIndex, outputDir, inputFastq1)
     if inputFastq2 is not None:
         cmd += " {0}".format(inputFastq2)
     return cmd

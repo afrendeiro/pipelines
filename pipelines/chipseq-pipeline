@@ -13,7 +13,7 @@ from pypiper import Pypiper
 
 
 __author__ = "Andre Rendeiro"
-__copyright__ = "Copyright 2014, Andre Rendeiro"
+__copyright__ = "Copyright 2015, Andre Rendeiro"
 __credits__ = []
 __license__ = "GPL2"
 __version__ = "0.1"
@@ -34,18 +34,9 @@ def main():
 
     # Read in objects
     prj, sample, args = pickle.load(open(samplePickle, "rb"))
-    # if doing the analysis part, require a tuple as "sample" and split it into sample and control
-    if args.command == "analyse":
-        if type(sample) is tuple:
-            sample, ctrl = sample
-        else:
-            raise TypeError("For the 'analyse command, a tuple of (sample, control) must be passed as 2nd element in pickle.")
 
     # Start main function
-    if args.command == "preprocess":
-        preprocess(args, prj, sample)
-    elif args.command == "analyse":
-        analyse(args, prj, sample, ctrl)
+    process(args, prj, sample)
 
     # Remove pickle
     if not args.dry_run:
@@ -70,7 +61,7 @@ def mainArgParser(parser):
     return parser
 
 
-def preprocess(args, prj, sample):
+def process(args, prj, sample):
     """
     This takes unmapped Bam files and makes trimmed, aligned, duplicate marked
     and removed, indexed (and shifted if necessary) Bam files
@@ -82,222 +73,212 @@ def preprocess(args, prj, sample):
     # Start Pypiper object
     pipe = Pypiper("pipe", sample.dirs.sampleRoot)
 
-    if args.stage in ["all"]:
+    # Merge Bam files if more than one technical replicate
+    if type(sample.unmappedBam) == list:
         pipe.timestamp("Merging bam files from replicates")
-        # if more than one technical replicate, merge bams
-        if type(sample.unmappedBam) == list:
-            cmd = tk.mergeBams(
-                inputBams=sample.unmappedBam,  # this is a list of sample paths
-                outputBam=sample.unmapped
-            )
-            pipe.call_lock(cmd, sample.unmapped, shell=True)
-            sample.unmappedBam = sample.unmapped
-    if args.stage in ["all", "fastqc"]:
-        pipe.timestamp("Measuring sample quality with Fastqc")
-        # TODO:
-        # Fastqc should be independent from this job but since there's no option in fastqc to specify
-        # the sample name, I'll for now run it on the already renamed fastq file produced before,
-        # which requires fastqc to run in the same job as the rest :S
-        cmd = tk.fastqc(
+        cmd = tk.mergeBams(
+            inputBams=sample.unmappedBam,  # this is a list of sample paths
+            outputBam=sample.unmapped
+        )
+        pipe.call_lock(cmd, sample.unmapped, shell=True)
+        sample.unmappedBam = sample.unmapped
+
+    # Fastqc
+    pipe.timestamp("Measuring sample quality with Fastqc")
+    cmd = tk.fastqc(
+        inputBam=sample.unmappedBam,
+        outputDir=sample.dirs.sampleRoot
+    )
+    pipe.call_lock(cmd, sample.dirs.sampleRoot + sample.sampleName + ".zip", shell=True)
+
+    # Convert bam to fastq
+    pipe.timestamp("Converting to Fastq format")
+    if not sample.paired:
+        cmd = tk.bam2fastq(
             inputBam=sample.unmappedBam,
-            outputDir=sample.dirs.sampleRoot
+            outputFastq=sample.fastq
         )
-        pipe.call_lock(cmd, sample.dirs.sampleRoot + sample.sampleName + ".zip", shell=True)
-    # convert bam to fastq
-    if args.stage in ["all", "bam2fastq"]:
-        pipe.timestamp("Converting to Fastq format")
+        pipe.call_lock(cmd, sample.fastq, shell=True)
+        pipe.clean_add(sample.fastq, conditional=True)
+    else:
+        cmd = tk.bam2fastq(
+            inputBam=sample.unmappedBam,
+            outputFastq=sample.fastq1,
+            outputFastq2=sample.fastq2,
+            unpairedFastq=sample.fastqUnpaired
+        )
+        pipe.call_lock(cmd, sample.fastq1, shell=True)
+        pipe.clean_add(sample.fastq1, conditional=True)
+        pipe.clean_add(sample.fastq2, conditional=True)
+        pipe.clean_add(sample.fastqUnpaired, conditional=True)
+
+    # Trim reads
+    pipe.timestamp("Trimming adapters from sample")
+    # TODO:
+    # Change absolute path to something usable by everyone or to an option.
+    if args.trimmer == "trimmomatic":
+        cmd = tk.trimmomatic(
+            inputFastq1=sample.fastq1 if sample.paired else sample.fastq,
+            inputFastq2=sample.fastq2 if sample.paired else None,
+            outputFastq1=sample.trimmed1 if sample.paired else sample.trimmed,
+            outputFastq1unpaired=sample.trimmed1Unpaired if sample.paired else None,
+            outputFastq2=sample.trimmed2 if sample.paired else None,
+            outputFastq2unpaired=sample.trimmed2Unpaired if sample.paired else None,
+            cpus=args.cpus,
+            adapters=prj.config["adapters"],
+            log=sample.trimlog
+        )
+        pipe.call_lock(cmd, sample.trimmed1 if sample.paired else sample.trimmed, shell=True)
         if not sample.paired:
-            cmd = tk.bam2fastq(
-                inputBam=sample.unmappedBam,
-                outputFastq=sample.fastq
-            )
-            pipe.call_lock(cmd, sample.fastq, shell=True)
-            pipe.clean_add(sample.fastq, conditional=True)
-        else:
-            cmd = tk.bam2fastq(
-                inputBam=sample.unmappedBam,
-                outputFastq=sample.fastq1,
-                outputFastq2=sample.fastq2,
-                unpairedFastq=sample.fastqUnpaired
-            )
-            pipe.call_lock(cmd, sample.fastq1, shell=True)
             pipe.clean_add(sample.fastq1, conditional=True)
-            pipe.clean_add(sample.fastq2, conditional=True)
-            pipe.clean_add(sample.fastqUnpaired, conditional=True)
+        else:
+            pipe.clean_add(sample.trimmed1, conditional=True)
+            pipe.clean_add(sample.trimmed1Unpaired, conditional=True)
+            pipe.clean_add(sample.trimmed2, conditional=True)
+            pipe.clean_add(sample.trimmed2Unpaired, conditional=True)
 
-    if args.stage in ["all", "trim"]:
-        pipe.timestamp("Trimming adapters from sample")
-        # TODO:
-        # Change absolute path to something usable by everyone or to an option.
-        if args.trimmer == "trimmomatic":
-            cmd = tk.trimmomatic(
-                inputFastq1=sample.fastq1 if sample.paired else sample.fastq,
-                inputFastq2=sample.fastq2 if sample.paired else None,
-                outputFastq1=sample.trimmed1 if sample.paired else sample.trimmed,
-                outputFastq1unpaired=sample.trimmed1Unpaired if sample.paired else None,
-                outputFastq2=sample.trimmed2 if sample.paired else None,
-                outputFastq2unpaired=sample.trimmed2Unpaired if sample.paired else None,
-                cpus=args.cpus,
-                adapters=prj.config["adapters"],
-                log=sample.trimlog
-            )
-            pipe.call_lock(cmd, sample.trimmed1 if sample.paired else sample.trimmed, shell=True)
-            if not sample.paired:
-                pipe.clean_add(sample.fastq1, conditional=True)
-            else:
-                pipe.clean_add(sample.trimmed1, conditional=True)
-                pipe.clean_add(sample.trimmed1Unpaired, conditional=True)
-                pipe.clean_add(sample.trimmed2, conditional=True)
-                pipe.clean_add(sample.trimmed2Unpaired, conditional=True)
-
-        if args.trimmer == "skewer":
-            cmd = tk.skewer(
-                inputFastq1=sample.fastq1 if sample.paired else sample.fastq,
-                inputFastq2=sample.fastq2 if sample.paired else None,
-                outputPrefix=os.path.join(sample.dirs.unmapped, sample.sampleName),
-                cpus=args.cpus,
-                adapters=prj.config["adapters"]
-            )
-            pipe.call_lock(cmd, sample.sampleName + "-trimmed-pair1.fastq" if sample.paired else sample.sampleName + "-trimmed.fastq", shell=True)
-            # move files to have common name
-            if not sample.paired:
-                cmd = tk.moveFile(
-                    os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed.fastq"),
-                    sample.trimmed
-                )
-                pipe.call_lock(cmd, sample.trimmed, shell=True)
-                pipe.clean_add(sample.trimmed, conditional=True)
-            else:
-                cmd = tk.moveFile(
-                    os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed-pair1.fastq"),
-                    sample.trimmed1
-                )
-                pipe.call_lock(cmd, sample.trimmed1, shell=True)
-                pipe.clean_add(sample.trimmed1, conditional=True)
-                cmd = tk.moveFile(
-                    os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed-pair2.fastq"),
-                    sample.trimmed2
-                )
-                pipe.call_lock(cmd, sample.trimmed2, shell=True)
-                pipe.clean_add(sample.trimmed2, conditional=True)
-            # move log to results dir
+    if args.trimmer == "skewer":
+        cmd = tk.skewer(
+            inputFastq1=sample.fastq1 if sample.paired else sample.fastq,
+            inputFastq2=sample.fastq2 if sample.paired else None,
+            outputPrefix=os.path.join(sample.dirs.unmapped, sample.sampleName),
+            cpus=args.cpus,
+            adapters=prj.config["adapters"]
+        )
+        pipe.call_lock(cmd, sample.sampleName + "-trimmed-pair1.fastq" if sample.paired else sample.sampleName + "-trimmed.fastq", shell=True)
+        # move files to have common name
+        if not sample.paired:
             cmd = tk.moveFile(
-                os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed.log"),
-                sample.trimlog
+                os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed.fastq"),
+                sample.trimmed
             )
-            pipe.call_lock(cmd, sample.trimlog, shell=True)
+            pipe.call_lock(cmd, sample.trimmed, shell=True)
+            pipe.clean_add(sample.trimmed, conditional=True)
+        else:
+            cmd = tk.moveFile(
+                os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed-pair1.fastq"),
+                sample.trimmed1
+            )
+            pipe.call_lock(cmd, sample.trimmed1, shell=True)
+            pipe.clean_add(sample.trimmed1, conditional=True)
+            cmd = tk.moveFile(
+                os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed-pair2.fastq"),
+                sample.trimmed2
+            )
+            pipe.call_lock(cmd, sample.trimmed2, shell=True)
+            pipe.clean_add(sample.trimmed2, conditional=True)
+        # move log to results dir
+        cmd = tk.moveFile(
+            os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed.log"),
+            sample.trimlog
+        )
+        pipe.call_lock(cmd, sample.trimlog, shell=True)
 
-    if args.stage in ["all", "mapping"]:
-        pipe.timestamp("Mapping reads with Bowtie2")
-        cmd = tk.bowtie2Map(
-            inputFastq1=sample.trimmed1 if sample.paired else sample.trimmed,
-            inputFastq2=sample.trimmed1 if sample.paired else None,
-            outputBam=sample.mapped,
-            log=sample.alnRates,
-            metrics=sample.alnMetrics,
-            genomeIndex=prj.config["annotations"]["genomes"][sample.genome],
-            maxInsert=args.maxinsert,
-            cpus=args.cpus
-        )
-        pipe.call_lock(cmd, sample.mapped, shell=True)
-        pipe.clean_add(sample.mapped, conditional=True)
-    if args.stage in ["all", "markduplicates"]:
-        pipe.timestamp("Marking duplicates with piccard")
-        cmd = tk.markDuplicates(
-            inputBam=sample.mapped,
-            outputBam=sample.dups,
-            metricsFile=sample.dupsMetrics
-        )
-        pipe.call_lock(cmd, sample.dups, shell=True)
-    if args.stage in ["all", "removeduplicates"]:
-        pipe.timestamp("Removing duplicates with sambamba")
-        cmd = tk.removeDuplicates(
-            inputBam=sample.dups,
-            outputBam=sample.nodups,
-            cpus=args.cpus
-        )
-        pipe.call_lock(cmd, sample.nodups, shell=True)
-    if args.stage in ["all", "shiftreads"]:
+    # Map
+    pipe.timestamp("Mapping reads with Bowtie2")
+    cmd = tk.bowtie2Map(
+        inputFastq1=sample.trimmed1 if sample.paired else sample.trimmed,
+        inputFastq2=sample.trimmed1 if sample.paired else None,
+        outputBam=sample.mapped,
+        log=sample.alnRates,
+        metrics=sample.alnMetrics,
+        genomeIndex=prj.config["annotations"]["genomes"][sample.genome],
+        maxInsert=args.maxinsert,
+        cpus=args.cpus
+    )
+    pipe.call_lock(cmd, sample.mapped, shell=True)
+    pipe.clean_add(sample.mapped, conditional=True)
+
+    # Mark duplicates
+    pipe.timestamp("Marking duplicates with piccard")
+    cmd = tk.markDuplicates(
+        inputBam=sample.mapped,
+        outputBam=sample.dups,
+        metricsFile=sample.dupsMetrics
+    )
+    pipe.call_lock(cmd, sample.dups, shell=True)
+
+    # Remove duplicates
+    pipe.timestamp("Removing duplicates with sambamba")
+    cmd = tk.removeDuplicates(
+        inputBam=sample.dups,
+        outputBam=sample.nodups,
+        cpus=args.cpus
+    )
+    pipe.call_lock(cmd, sample.nodups, shell=True)
+
+    # Shift reads
+    if sample.tagmented:
         pipe.timestamp("Shifting reads of tagmented sample")
-        if sample.tagmented:
-            cmd = tk.shiftReads(
-                inputBam=sample.dups,
-                genome=sample.genome,
-                outputBam=sample.dupsshifted
-            )
-            pipe.call_lock(cmd, sample.dupsshifted, shell=True)
-            cmd = tk.shiftReads(
-                inputBam=sample.nodups,
-                genome=sample.genome,
-                outputBam=sample.nodupsshifted
-            )
-            pipe.call_lock(cmd, sample.nodupsshifted, shell=True)
-    if args.stage in ["all", "indexbam"]:
-        pipe.timestamp("Indexing bamfile with samtools")
-        for s in [sample.dups, sample.nodups]:
+        cmd = tk.shiftReads(
+            inputBam=sample.dups,
+            genome=sample.genome,
+            outputBam=sample.dupsshifted
+        )
+        pipe.call_lock(cmd, sample.dupsshifted, shell=True)
+        cmd = tk.shiftReads(
+            inputBam=sample.nodups,
+            genome=sample.genome,
+            outputBam=sample.nodupsshifted
+        )
+        pipe.call_lock(cmd, sample.nodupsshifted, shell=True)
+
+    # Index bams
+    pipe.timestamp("Indexing bamfile with samtools")
+    for s in [sample.dups, sample.nodups]:
+        cmd = tk.indexBam(inputBam=s)
+        pipe.call_lock(cmd, s + ".bai", shell=True)
+    if sample.tagmented:
+        for s in [sample.dupsshifted, sample.nodupsshifted]:
             cmd = tk.indexBam(inputBam=s)
             pipe.call_lock(cmd, s + ".bai", shell=True)
-        if sample.tagmented:
-            for s in [sample.dupsshifted, sample.nodupsshifted]:
-                cmd = tk.indexBam(inputBam=s)
-                pipe.call_lock(cmd, s + ".bai", shell=True)
 
-    if args.stage in ["all", "maketracks"]:
-        # right now tracks are only made for bams without duplicates
-        pipe.timestamp("Making bigWig tracks from bam file")
-        cmd = tk.bamToBigWig(
-            inputBam=sample.nodups,
-            outputBigWig=sample.bigwig,
-            genomeSizes=prj.config["annotations"]["chrsizes"][sample.genome],
-            genome=sample.genome,
-            tagmented=sample.tagmented
-        )
-        pipe.call_lock(cmd, sample.bigwig, shell=True)
-        cmd = tk.addTrackToHub(
-            sampleName=sample.sampleName,
-            trackURL=sample.trackURL,
-            trackHub=os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(sample.genome)),
-            colour=sample.trackColour
-        )
-        pipe.call_lock(cmd, os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(sample.genome)), shell=True)
-        tk.linkToTrackHub(
-            trackHubURL=os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(sample.genome)),
-            fileName=os.path.join(prj.dirs.root, "ucsc_tracks_{0}.html".format(sample.genome)),
-            genome=sample.genome
-        )
-    if args.stage in ["all", "coverage"]:
-        pipe.timestamp("Calculating genome-wide coverage")
-        cmd = tk.genomeWideCoverage(
-            inputBam=sample.nodups,
-            genomeWindows=prj.config["annotations"]["genomewindows"][sample.genome],
-            output=sample.coverage
-        )
-        pipe.call_lock(cmd, sample.coverage, shell=True)
+    # Make tracks
+    # right now tracks are only made for bams without duplicates
+    pipe.timestamp("Making bigWig tracks from bam file")
+    cmd = tk.bamToBigWig(
+        inputBam=sample.nodups,
+        outputBigWig=sample.bigwig,
+        genomeSizes=prj.config["annotations"]["chrsizes"][sample.genome],
+        genome=sample.genome,
+        tagmented=sample.tagmented
+    )
+    pipe.call_lock(cmd, sample.bigwig, shell=True)
+    cmd = tk.addTrackToHub(
+        sampleName=sample.sampleName,
+        trackURL=sample.trackURL,
+        trackHub=os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(sample.genome)),
+        colour=sample.trackColour
+    )
+    pipe.call_lock(cmd, os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(sample.genome)), shell=True)
+    tk.linkToTrackHub(
+        trackHubURL=os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(sample.genome)),
+        fileName=os.path.join(prj.dirs.root, "ucsc_tracks_{0}.html".format(sample.genome)),
+        genome=sample.genome
+    )
 
-    print("Finished preprocessing sample %s." % sample.sampleName)
+    # Count coverage genome-wide
+    pipe.timestamp("Calculating genome-wide coverage")
+    cmd = tk.genomeWideCoverage(
+        inputBam=sample.nodups,
+        genomeWindows=prj.config["annotations"]["genomewindows"][sample.genome],
+        output=sample.coverage
+    )
+    pipe.call_lock(cmd, sample.coverage, shell=True)
 
+    # Assess NSC, RSC
+    cmd = tk.peakTools(
+        inputBam=sample.nodups,
+        output=os.path.join(prj.dirs.qc, "sample_QC.tsv"),
+        plot=os.path.join(prj.dirs.qc, sample.sampleName + "_QC.pdf"),
+        cpus=args.cpus
+    )
+    pipe.call_lock(cmd, os.path.join(prj.dirs.qc, "sample_QC.tsv"), shell=True)
 
-def analyse(args, prj, sample, ctrl):
-    """
-    Perform ChIP-seq QC, call peaks, perform de novo motif discovery,
-    plot signal around called peaks and TSSs.
-    """
-    print("Starting sample analysis.")
-
-    # Start Pypiper object
-    pipe = Pypiper("pipe", prj.dirs.logs + sample.sampleName)
-
-    if args.stage in ["all", "qc"]:
-        cmd = tk.peakTools(
-            inputBam=sample.nodups,
-            output=os.path.join(prj.dirs.qc, "sample_QC.tsv"),
-            plot=os.path.join(prj.dirs.qc, sample.sampleName + "_QC.pdf"),
-            cpus=args.cpus
-        )
-        pipe.call_lock(cmd, os.path.join(prj.dirs.qc, "sample_QC.tsv"), shell=True)
-    if args.stage in ["all", "callpeaks"]:
+    # If sample has "ctrl" attribute, proceed with remaining (peak calling, etc...)
+    if hasattr(sample, "ctrl"):
         if args.peak_caller == "macs2":
-            # make dir for output
+            # make dir for output (macs fails if it does not exist)
             if not os.path.exists(os.path.join(sample.dirs.peaks, sample.sampleName)):
                 os.makedirs(os.path.join(sample.dirs.peaks, sample.sampleName))
 
@@ -305,7 +286,7 @@ def analyse(args, prj, sample, ctrl):
             # For broad factors use broad settings
             cmd = tk.macs2CallPeaks(
                 treatmentBam=sample.nodups,
-                controlBam=ctrl.nodups,
+                controlBam=sample.ctrl.nodups,
                 outputDir=os.path.join(sample.dirs.peaks, sample.sampleName),
                 sampleName=sample.sampleName,
                 genome=sample.genome,
@@ -317,9 +298,9 @@ def analyse(args, prj, sample, ctrl):
             # For broad factors use broad settings
             cmd = tk.sppCallPeaks(
                 treatmentBam=sample.nodups,
-                controlBam=ctrl.nodups,
+                controlBam=sample.ctrl.nodups,
                 treatmentName=sample.sampleName,
-                controlName=ctrl.sampleName,
+                controlName=sample.ctrl.sampleName,
                 outputDir=os.path.join(sample.dirs.peaks, sample.sampleName),
                 broad=True if sample.broad else False,
                 cpus=args.cpus
@@ -333,7 +314,7 @@ def analyse(args, prj, sample, ctrl):
             # )
             # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, sample.sampleName + ".bed"), shell=True)
             # cmd = tk.bamToBed(
-            #     inputBam=ctrl.nodups,
+            #     inputBam=sample.ctrl.nodups,
             #     outputBed=os.path.join(sample.dirs.peaks, control.sampleName + ".bed"),
             # )
             # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, control.sampleName + ".bed"), shell=True)
@@ -344,7 +325,9 @@ def analyse(args, prj, sample, ctrl):
             #     cpus=args.cpus
             # )
             # pipe.call_lock(cmd, shell=True)
-    if args.stage in ["all", "findmotifs"]:
+
+        # Find motifs
+        pipe.timestamp("Finding motifs")
         if not sample.histone:
             # For TFs, find the "self" motif
             cmd = tk.homerFindMotifs(
@@ -377,7 +360,8 @@ def analyse(args, prj, sample, ctrl):
                 n_motifs=20
             )
             pipe.call_lock(cmd, os.path.join(sample.motifsDir, "homerResults", "motif1.motif"), shell=True)
-    if args.stage in ["all", "centerpeaks"]:
+
+        # Center peaks on motifs
         # TODO:
         # right now this assumes peaks were called with MACS2
         # figure a way of magetting the peak files withough using the peak_caller option
@@ -390,7 +374,9 @@ def analyse(args, prj, sample, ctrl):
             outputBed=sample.peaksMotifCentered
         )
         pipe.call_lock(cmd, sample.peaksMotifCentered, shell=True)
-    if args.stage in ["all", "annotatepeaks"]:
+
+        # Annotate peaks with motif info
+        pipe.timestamp("Annotating peaks with motif info")
         # TODO:
         # right now this assumes peaks were called with MACS2
         # figure a way of getting the peak files withough using the peak_caller option
@@ -402,7 +388,9 @@ def analyse(args, prj, sample, ctrl):
             outputBed=sample.peaksMotifAnnotated
         )
         pipe.call_lock(cmd, sample.peaksMotifAnnotated, shell=True)
-    if args.stage in ["all", "peakanalysis"]:
+
+        # Plot enrichment at peaks centered on motifs
+        pipe.timestamp("Ploting enrichment at peaks centered on motifs")
         cmd = tk.peakAnalysis(
             inputBam=sample.nodups,
             peakFile=sample.peaksMotifCentered,
@@ -415,7 +403,9 @@ def analyse(args, prj, sample, ctrl):
             duplicates=True
         )
         pipe.call_lock(cmd, shell=True)
-    if args.stage in ["all", "tssanalysis"]:
+
+        # Plot enrichment around TSSs
+        pipe.timestamp("Ploting enrichment around TSSs")
         cmd = tk.tssAnalysis(
             inputBam=sample.nodups,
             tssFile=prj.config["annotations"]["tss"][sample.genome],
@@ -428,7 +418,9 @@ def analyse(args, prj, sample, ctrl):
             duplicates=True
         )
         pipe.call_lock(cmd, shell=True)
-    if args.stage in ["all", "frip"]:
+
+        # Calculate fraction of reads in peaks (FRiP)
+        pipe.timestamp("Calculating fraction of reads in peaks (FRiP)")
         cmd = tk.calculateFRiP(
             inputBam=sample.nodups,
             inputBed=sample.peaks,
@@ -436,14 +428,7 @@ def analyse(args, prj, sample, ctrl):
         )
         pipe.call_lock(cmd, sample.frip, shell=True)
 
-    # if args.stage in ["all", "footprints"] and control and sample.tagmented:
-    #     cmd = tk.footprintAnalysis(
-    #         sample.dirs.peaks, sample.sampleName, sample.sampleName + "_peaks.motifCentered.bed"),
-    #         sample.dirs.peaks, sample.sampleName, sample.sampleName + "_peaks.motifAnnotated.bed")
-    #     )
-    #     pipe.call_lock(cmd, shell=True)
-
-    print("Finished analysis")
+    print("Finished processing sample %s." % sample.sampleName)
 
 
 if __name__ == '__main__':

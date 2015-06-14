@@ -154,7 +154,7 @@ def process(args, prj, sample):
                 inputFastq1=sample.trimmed1 if sample.paired else sample.trimmed,
                 inputFastq2=sample.trimmed1 if sample.paired else None,
                 outputDir=sample.dirs.quant,
-                genomeIndex=prj.config["kallistoIndexes"][sample.genome]
+                transciptomeIndex=prj.config["annotations"]["kallistoindex"][sample.genome]
             )
             pipe.call_lock(cmd, sample.kallistoquant)
 

@@ -143,6 +143,14 @@ def bowtie2Map(inputFastq1, outputBam, log, metrics, genomeIndex, maxInsert, cpu
     return cmd
 
 
+def topHatMap(inputFastq, outDir, genome, transcriptome, cpus):
+    cmd = "tophat --GTF {0} --b2-L 15 --library-type fr-unstranded --mate-inner-dist 120".format(transcriptome)
+    cmd += "--max-multihits 100 --no-coverage-search"
+    cmd += " --num-threads {0} --output-dir {1} {2} {3}".format(cpus, outDir, genome, inputFastq)
+
+    return cmd
+
+
 def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
     import re
 
@@ -263,6 +271,22 @@ def linkToTrackHub(trackHubURL, fileName, genome):
         handle.write(textwrap.dedent(html))
 
 
+def htSeqCount(inputBam, gff, output):
+    # Below are only default arguments.
+    # I decided to pass them explicetely to remind me that
+    # they might have to be changed in the future for other applications
+    cmd = "htseq-count -f bam -t exon -i gene_id -m union {0} {1} > {2}".format(inputBam, gff, output)
+
+    return cmd
+
+
+def kallisto(inputFastq1, outputDir, genomeIndex, inputFastq2=None):
+    cmd = "kallisto quant --plaintext  -l 180 -i {0} -o {1} {2}".format(genomeIndex, outputDir, inputFastq1)
+    if inputFastq2 is not None:
+        cmd += " {0}".format(inputFastq2)
+    return cmd
+
+
 def genomeWideCoverage(inputBam, genomeWindows, output):
     cmd = "bedtools coverage -abam -counts -a {0} -b {1} > {2}".format(inputBam, genomeWindows, output)
 
@@ -277,18 +301,21 @@ def calculateFRiP(inputBam, inputBed, output):
     return cmd
 
 
-def macs2CallPeaks(treatmentBam, controlBam, outputDir, sampleName, genome, broad=False, plot=True):
-
+def macs2CallPeaks(treatmentBam, outputDir, sampleName, genome, controlBam=None, broad=False, plot=True):
     if not broad:
-        cmd = "macs2 callpeak -t {0} -c {1} --bw 200 -g {2} -n {3} --outdir {4}""".format(
-            treatmentBam, controlBam, genome, sampleName, outputDir
-        )
-        # --fix-bimodal --extsize 180 \\
+        cmd = "macs2 callpeak -t {0}".format(treatmentBam)
+        if controlBam is not None:
+            cmd += " -c {0}".format(controlBam)
+        cmd += " --bw 200 -g {0} -n {0} --outdir {0}".format(genome, sampleName, outputDir)
+        # --fix-bimodal --extsize 180
     else:
         # Parameter setting for broad factors according to Nature Protocols (2012)
         # Vol.7 No.9 1728-1740 doi:10.1038/nprot.2012.101 Protocol (D) for H3K36me3
-        cmd = "macs2 callpeak -t {0} -c {1} --broad --nomodel --extsize 73 --pvalue 1e-3 -g {2} -n {3} --outdir {4}".format(
-            treatmentBam, controlBam, genome, sampleName, outputDir
+        cmd = "macs2 callpeak -t {0}".format(treatmentBam)
+        if controlBam is not None:
+            cmd += " -c {0}".format(controlBam)
+        cmd += " --broad --nomodel --extsize 73 --pvalue 1e-3 -g {0} -n {1} --outdir {2}".format(
+            genome, sampleName, outputDir
         )
 
     return cmd

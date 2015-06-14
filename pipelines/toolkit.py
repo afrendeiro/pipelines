@@ -153,20 +153,6 @@ def bowtie2Map(inputFastq1, outputBam, log, metrics, genomeIndex, maxInsert, cpu
     return [cmd1, cmd2, cmd3]
 
 
-def shiftReads(inputBam, genome, outputBam):
-    import re
-
-    outputBam = re.sub("\.bam$", "", outputBam)
-    cmd1 = "module load samtools"
-
-    cmd2 = "samtools view -h {0} |".format(inputBam)
-    cmd2 += " shift_reads.py {0} |".format(genome)
-    cmd2 += " samtools view -S -b - |"
-    cmd2 += " samtools sort - {0}".format(outputBam)
-
-    return [cmd1, cmd2]
-
-
 def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
     import re
 
@@ -195,6 +181,20 @@ def removeDuplicates(inputBam, outputBam, cpus=16):
     cmd = "sambamba markdup -t {2} -r {0} {1}".format(inputBam, outputBam, cpus)
 
     return cmd
+
+
+def shiftReads(inputBam, genome, outputBam):
+    import re
+
+    outputBam = re.sub("\.bam$", "", outputBam)
+    cmd1 = "module load samtools"
+
+    cmd2 = "samtools view -h {0} |".format(inputBam)
+    cmd2 += " shift_reads.py {0} |".format(genome)
+    cmd2 += " samtools view -S -b - |"
+    cmd2 += " samtools sort - {0}".format(outputBam)
+
+    return [cmd1, cmd2]
 
 
 def indexBam(inputBam):

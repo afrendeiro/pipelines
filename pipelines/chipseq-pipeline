@@ -90,7 +90,7 @@ def preprocess(args, prj, sample):
                 inputBams=sample.unmappedBam,  # this is a list of sample paths
                 outputBam=sample.unmapped
             )
-            pipe.call_lock(cmd, sample.unmapped)
+            pipe.call_lock(cmd, sample.unmapped, shell=True)
             sample.unmappedBam = sample.unmapped
     if args.stage in ["all", "fastqc"]:
         pipe.timestamp("Measuring sample quality with Fastqc")
@@ -102,7 +102,7 @@ def preprocess(args, prj, sample):
             inputBam=sample.unmappedBam,
             outputDir=sample.dirs.sampleRoot
         )
-        pipe.call_lock(cmd, sample.dirs.sampleRoot + sample.sampleName + ".zip")
+        pipe.call_lock(cmd, sample.dirs.sampleRoot + sample.sampleName + ".zip", shell=True)
     # convert bam to fastq
     if args.stage in ["all", "bam2fastq"]:
         pipe.timestamp("Converting to Fastq format")
@@ -111,7 +111,7 @@ def preprocess(args, prj, sample):
                 inputBam=sample.unmappedBam,
                 outputFastq=sample.fastq
             )
-            pipe.call_lock(cmd, sample.fastq)
+            pipe.call_lock(cmd, sample.fastq, shell=True)
             pipe.clean_add(sample.fastq, conditional=True)
         else:
             cmd = tk.bam2fastq(
@@ -120,7 +120,7 @@ def preprocess(args, prj, sample):
                 outputFastq2=sample.fastq2,
                 unpairedFastq=sample.fastqUnpaired
             )
-            pipe.call_lock(cmd, sample.fastq1)
+            pipe.call_lock(cmd, sample.fastq1, shell=True)
             pipe.clean_add(sample.fastq1, conditional=True)
             pipe.clean_add(sample.fastq2, conditional=True)
             pipe.clean_add(sample.fastqUnpaired, conditional=True)
@@ -141,7 +141,7 @@ def preprocess(args, prj, sample):
                 adapters=prj.config["adapters"],
                 log=sample.trimlog
             )
-            pipe.call_lock(cmd, sample.trimmed1 if sample.paired else sample.trimmed)
+            pipe.call_lock(cmd, sample.trimmed1 if sample.paired else sample.trimmed, shell=True)
             if not sample.paired:
                 pipe.clean_add(sample.fastq1, conditional=True)
             else:
@@ -158,34 +158,34 @@ def preprocess(args, prj, sample):
                 cpus=args.cpus,
                 adapters=prj.config["adapters"]
             )
-            pipe.call_lock(cmd, sample.sampleName + "-trimmed-pair1.fastq" if sample.paired else sample.sampleName + "-trimmed.fastq")
+            pipe.call_lock(cmd, sample.sampleName + "-trimmed-pair1.fastq" if sample.paired else sample.sampleName + "-trimmed.fastq", shell=True)
             # move files to have common name
             if not sample.paired:
                 cmd = tk.moveFile(
                     os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed.fastq"),
                     sample.trimmed
                 )
-                pipe.call_lock(cmd, sample.trimmed)
+                pipe.call_lock(cmd, sample.trimmed, shell=True)
                 pipe.clean_add(sample.trimmed, conditional=True)
             else:
                 cmd = tk.moveFile(
                     os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed-pair1.fastq"),
                     sample.trimmed1
                 )
-                pipe.call_lock(cmd, sample.trimmed1)
+                pipe.call_lock(cmd, sample.trimmed1, shell=True)
                 pipe.clean_add(sample.trimmed1, conditional=True)
                 cmd = tk.moveFile(
                     os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed-pair2.fastq"),
                     sample.trimmed2
                 )
-                pipe.call_lock(cmd, sample.trimmed2)
+                pipe.call_lock(cmd, sample.trimmed2, shell=True)
                 pipe.clean_add(sample.trimmed2, conditional=True)
             # move log to results dir
             cmd = tk.moveFile(
                 os.path.join(sample.dirs.unmapped, sample.sampleName + "-trimmed.log"),
                 sample.trimlog
             )
-            pipe.call_lock(cmd, sample.trimlog)
+            pipe.call_lock(cmd, sample.trimlog, shell=True)
 
     if args.stage in ["all", "mapping"]:
         pipe.timestamp("Mapping reads with Bowtie2")
@@ -216,7 +216,7 @@ def preprocess(args, prj, sample):
             outputBam=sample.nodups,
             cpus=args.cpus
         )
-        pipe.call_lock(cmd, sample.nodups)
+        pipe.call_lock(cmd, sample.nodups, shell=True)
     if args.stage in ["all", "shiftreads"]:
         pipe.timestamp("Shifting reads of tagmented sample")
         if sample.tagmented:
@@ -236,11 +236,11 @@ def preprocess(args, prj, sample):
         pipe.timestamp("Indexing bamfile with samtools")
         for s in [sample.dups, sample.nodups]:
             cmd = tk.indexBam(inputBam=s)
-            pipe.call_lock(cmd, s + ".bai")
+            pipe.call_lock(cmd, s + ".bai", shell=True)
         if sample.tagmented:
             for s in [sample.dupsshifted, sample.nodupsshifted]:
                 cmd = tk.indexBam(inputBam=s)
-                pipe.call_lock(cmd, s + ".bai")
+                pipe.call_lock(cmd, s + ".bai", shell=True)
 
     if args.stage in ["all", "maketracks"]:
         # right now tracks are only made for bams without duplicates
@@ -294,7 +294,7 @@ def analyse(args, prj, sample, ctrl):
             plot=os.path.join(prj.dirs.qc, sample.sampleName + "_QC.pdf"),
             cpus=args.cpus
         )
-        pipe.call_lock(cmd, os.path.join(prj.dirs.qc, "sample_QC.tsv"))
+        pipe.call_lock(cmd, os.path.join(prj.dirs.qc, "sample_QC.tsv"), shell=True)
     if args.stage in ["all", "callpeaks"]:
         if args.peak_caller == "macs2":
             # make dir for output
@@ -311,7 +311,7 @@ def analyse(args, prj, sample, ctrl):
                 genome=sample.genome,
                 broad=True if sample.broad else False
             )
-            pipe.call_lock(cmd, sample.peaks)
+            pipe.call_lock(cmd, sample.peaks, shell=True)
         elif args.peak_caller == "spp":
             # For point-source factors use default settings
             # For broad factors use broad settings
@@ -324,26 +324,26 @@ def analyse(args, prj, sample, ctrl):
                 broad=True if sample.broad else False,
                 cpus=args.cpus
             )
-            pipe.call_lock(cmd, sample.peaks)
+            pipe.call_lock(cmd, sample.peaks, shell=True)
         elif args.peak_caller == "zinba":
             raise NotImplementedError("Calling peaks with Zinba is not yet implemented.")
             # cmd = tk.bamToBed(
             #     inputBam=sample.nodups,
             #     outputBed=os.path.join(sample.dirs.peaks, sample.sampleName + ".bed"),
             # )
-            # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, sample.sampleName + ".bed"))
+            # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, sample.sampleName + ".bed"), shell=True)
             # cmd = tk.bamToBed(
             #     inputBam=ctrl.nodups,
             #     outputBed=os.path.join(sample.dirs.peaks, control.sampleName + ".bed"),
             # )
-            # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, control.sampleName + ".bed"))
+            # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, control.sampleName + ".bed"), shell=True)
             # cmd = tk.zinbaCallPeaks(
             #     treatmentBed=os.path.join(sample.dirs.peaks, sample.sampleName + ".bed"),
             #     controlBed=os.path.join(sample.dirs.peaks, control.sampleName + ".bed"),
             #     tagmented=sample.tagmented,
             #     cpus=args.cpus
             # )
-            # pipe.call_lock(cmd)
+            # pipe.call_lock(cmd, shell=True)
     if args.stage in ["all", "findmotifs"]:
         if not sample.histone:
             # For TFs, find the "self" motif
@@ -355,7 +355,7 @@ def analyse(args, prj, sample, ctrl):
                 length="8,10,12,14,16",
                 n_motifs=8
             )
-            pipe.call_lock(cmd, os.path.join(sample.motifsDir, "homerResults", "motif1.motif"))
+            pipe.call_lock(cmd, os.path.join(sample.motifsDir, "homerResults", "motif1.motif"), shell=True)
             # For TFs, find co-binding motifs (broader region)
             cmd = tk.homerFindMotifs(
                 peakFile=sample.peaks,
@@ -365,7 +365,7 @@ def analyse(args, prj, sample, ctrl):
                 length="8,10,12,14,16",
                 n_motifs=12
             )
-            pipe.call_lock(cmd, os.path.join(sample.motifsDir + "_cobinders", "homerResults", "motif1.motif"))
+            pipe.call_lock(cmd, os.path.join(sample.motifsDir + "_cobinders", "homerResults", "motif1.motif"), shell=True)
         else:
             # For histones, use a broader region to find motifs
             cmd = tk.homerFindMotifs(
@@ -376,7 +376,7 @@ def analyse(args, prj, sample, ctrl):
                 length="8,10,12,14,16",
                 n_motifs=20
             )
-            pipe.call_lock(cmd, os.path.join(sample.motifsDir, "homerResults", "motif1.motif"))
+            pipe.call_lock(cmd, os.path.join(sample.motifsDir, "homerResults", "motif1.motif"), shell=True)
     if args.stage in ["all", "centerpeaks"]:
         # TODO:
         # right now this assumes peaks were called with MACS2
@@ -389,7 +389,7 @@ def analyse(args, prj, sample, ctrl):
             motifFile=os.path.join(sample.motifsDir, "homerResults", "motif1.motif"),
             outputBed=sample.peaksMotifCentered
         )
-        pipe.call_lock(cmd, sample.peaksMotifCentered)
+        pipe.call_lock(cmd, sample.peaksMotifCentered, shell=True)
     if args.stage in ["all", "annotatepeaks"]:
         # TODO:
         # right now this assumes peaks were called with MACS2
@@ -401,7 +401,7 @@ def analyse(args, prj, sample, ctrl):
             motifFile=os.path.join(sample.motifsDir, "homerResults", "motif1.motif"),
             outputBed=sample.peaksMotifAnnotated
         )
-        pipe.call_lock(cmd, sample.peaksMotifAnnotated)
+        pipe.call_lock(cmd, sample.peaksMotifAnnotated, shell=True)
     if args.stage in ["all", "peakanalysis"]:
         cmd = tk.peakAnalysis(
             inputBam=sample.nodups,
@@ -414,7 +414,7 @@ def analyse(args, prj, sample, ctrl):
             strand_specific=True,
             duplicates=True
         )
-        pipe.call_lock(cmd)
+        pipe.call_lock(cmd, shell=True)
     if args.stage in ["all", "tssanalysis"]:
         cmd = tk.tssAnalysis(
             inputBam=sample.nodups,
@@ -427,7 +427,7 @@ def analyse(args, prj, sample, ctrl):
             strand_specific=True,
             duplicates=True
         )
-        pipe.call_lock(cmd)
+        pipe.call_lock(cmd, shell=True)
     if args.stage in ["all", "frip"]:
         cmd = tk.calculateFRiP(
             inputBam=sample.nodups,
@@ -441,7 +441,7 @@ def analyse(args, prj, sample, ctrl):
     #         sample.dirs.peaks, sample.sampleName, sample.sampleName + "_peaks.motifCentered.bed"),
     #         sample.dirs.peaks, sample.sampleName, sample.sampleName + "_peaks.motifAnnotated.bed")
     #     )
-    #     pipe.call_lock(cmd)
+    #     pipe.call_lock(cmd, shell=True)
 
     print("Finished analysis")
 

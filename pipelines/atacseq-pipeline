@@ -85,15 +85,12 @@ def process(args, prj, sample):
 
     # Fastqc
     pipe.timestamp("Measuring sample quality with Fastqc")
-    # TODO:
-    # Fastqc should be independent from this job but since there's no option in fastqc to specify
-    # the sample name, I'll for now run it on the already renamed fastq file produced before,
-    # which requires fastqc to run in the same job as the rest :S
     cmd = tk.fastqc(
         inputBam=sample.unmappedBam,
-        outputDir=sample.dirs.sampleRoot
+        outputDir=sample.dirs.sampleRoot,
+        sampleName=sample.name
     )
-    pipe.call_lock(cmd, sample.dirs.sampleRoot + sample.sampleName + ".zip", shell=True)
+    pipe.call_lock(cmd, os.path.join(sample.dirs.sampleRoot, sample.name + "_fastqc.zip"), shell=True)
 
     # Convert bam to fastq
     pipe.timestamp("Converting to Fastq format")

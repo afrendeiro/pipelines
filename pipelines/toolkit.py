@@ -29,7 +29,7 @@ def slurmHeader(jobName, output, queue="shortq", ntasks=1, time="10:00:00",
 
 
 def slurmFooter():
-    cmd = "date"
+    cmd = "    date"
 
     return cmd
 
@@ -68,10 +68,18 @@ def mergeBams(inputBams, outputBam):
     return cmd
 
 
-def fastqc(inputBam, outputDir):
-    cmd = "fastqc --noextract --outdir {0} {1}".format(outputDir, inputBam)
+def fastqc(inputBam, outputDir, sampleName):
+    import os
 
-    return cmd
+    initial = os.path.splitext(os.path.basename(inputBam))[0]
+
+    cmd1 = "fastqc --noextract --outdir {0} {1}".format(outputDir, inputBam)
+
+    cmd2 = "mv {0}_fastqc.html {1}_fastqc.html".format(os.path.join(outputDir, initial), os.path.join(outputDir, sampleName))
+
+    cmd3 = "mv {0}_fastqc.zip {1}_fastqc.zip".format(os.path.join(outputDir, initial), os.path.join(outputDir, sampleName))
+
+    return [cmd1, cmd2, cmd3]
 
 
 def bam2fastq(inputBam, outputFastq, outputFastq2=None, unpairedFastq=None):

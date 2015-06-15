@@ -68,7 +68,7 @@ def process(args, prj, sample):
     along with a UCSC browser track.
     """
 
-    print("Starting sample preprocessing.")
+    print("Starting ChIP-seq sample preprocessing.")
 
     # Start Pypiper object
     pipe = Pypiper("pipe", sample.dirs.sampleRoot)
@@ -87,9 +87,10 @@ def process(args, prj, sample):
     pipe.timestamp("Measuring sample quality with Fastqc")
     cmd = tk.fastqc(
         inputBam=sample.unmappedBam,
-        outputDir=sample.dirs.sampleRoot
+        outputDir=sample.dirs.sampleRoot,
+        sampleName=sample.name
     )
-    pipe.call_lock(cmd, sample.dirs.sampleRoot + sample.sampleName + ".zip", shell=True)
+    pipe.call_lock(cmd, os.path.join(sample.dirs.sampleRoot, sample.name + "_fastqc.zip"), shell=True)
 
     # Convert bam to fastq
     pipe.timestamp("Converting to Fastq format")

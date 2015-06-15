@@ -291,9 +291,6 @@ class SampleSheet(object):
         """
         for sample in range(len(self.df)):
             technique = self.df.ix[sample]["technique"].upper()
-            print(self.config["techniques"]["chipseq"])
-            print(self.config["techniques"]["cm"])
-            print(technique)
             if technique in self.config["techniques"]["chipseq"]:
                 self.samples.append(ChIPseqSample(self.df.ix[sample]))
             elif technique in self.config["techniques"]["cm"]:

@@ -137,7 +137,6 @@ class Project(object):
         self.dirs.plots = _os.path.join(self.dirs.results, "plots")
         # Html structure
         self.dirs.html = _os.path.join(self.dirs.parenthtml, self.name)
-        self.dirs.bigwig = _os.path.join(self.dirs.html, "bigwig")
 
         # Sample stats csv
         self.sampleStats = _os.path.join(self.dirs.root, self.name + ".sample_stats.csv")
@@ -156,7 +155,7 @@ class Project(object):
         """
         Makes the project's public_html folder executable.
         """
-        for d in [self.dirs.parenthtml, self.dirs.html, self.dirs.bigwig]:
+        for d in [self.dirs.parenthtml, self.dirs.html]:
             try:
                 _os.chmod(d, 0755)
             except OSError:
@@ -490,9 +489,8 @@ class Sample(object):
                     paired += 1
                 n -= 1
             p.kill()
-        except Exception as e:
-            print("Bam file does not exist or cannot be read: %s" % bam)
-            raise e
+        except:
+            raise IOError("Bam file does not exist or cannot be read: %s" % bam)
 
         # Get most abundant read length
         self.readLength = sorted(readLength)[-1]

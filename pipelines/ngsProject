@@ -179,6 +179,8 @@ def sampleLoop(args, prj):
             jobCode += "atacseq-pipeline {0}\n".format(samplePickle)
         elif technique in prj.config["techniques"]["quantseq"]:
             jobCode += "quantseq-pipeline {0}\n".format(samplePickle)
+        else:
+            raise TypeError("Sample is not in known sample class.")
 
         # Slurm footer
         jobCode += tk.slurmFooter()

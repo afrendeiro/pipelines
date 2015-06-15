@@ -152,6 +152,8 @@ def bowtie2Map(inputFastq1, outputBam, log, metrics, genomeIndex, maxInsert, cpu
 
 
 def topHatMap(inputFastq, outDir, genome, transcriptome, cpus):
+    # TODO:
+    # Allow paired input
     cmd = "tophat --GTF {0} --b2-L 15 --library-type fr-unstranded --mate-inner-dist 120".format(transcriptome)
     cmd += "--max-multihits 100 --no-coverage-search"
     cmd += " --num-threads {0} --output-dir {1} {2} {3}".format(cpus, outDir, genome, inputFastq)
@@ -198,6 +200,20 @@ def shiftReads(inputBam, genome, outputBam):
     cmd += " samtools sort - {0}".format(outputBam)
 
     return cmd
+
+
+def sortIndexBam(inputBam, outputBam):
+    import re
+
+    tmpBam = re.sub("\.bam", "", inputBam)
+
+    cmd1 = "samtools sort {0} {1}".format(inputBam, tmpBam)
+
+    cmd2 = "mv {0}.bam {1}".format(tmpBam, outputBam)
+
+    cmd3 = "samtools index {0}".format(outputBam)
+
+    return [cmd1, cmd2, cmd3]
 
 
 def indexBam(inputBam):
@@ -279,13 +295,16 @@ def linkToTrackHub(trackHubURL, fileName, genome):
         handle.write(textwrap.dedent(html))
 
 
-def htSeqCount(inputBam, gff, output):
-    # Below are only default arguments.
-    # I decided to pass them explicetely to remind me that
-    # they might have to be changed in the future for other applications
-    cmd = "htseq-count -f bam -t exon -i gene_id -m union {0} {1} > {2}".format(inputBam, gff, output)
+def htSeqCount(inputBam, gtf, output):
+    sam = inputBam.replace("bam", "sam")
 
-    return cmd
+    cmd1 = "samtools view {0} > {3}".format(inputBam, sam)
+
+    cmd2 = "htseq-count -f sam -t exon -i transcript_id -m union {0} {1} > {2}".format(sam, gtf, output)
+
+    cmd3 = "rm {0}".format(sam)
+
+    return [cmd1, cmd2, cmd3]
 
 
 def kallisto(inputFastq1, outputDir, transcriptomeIndex, inputFastq2=None):

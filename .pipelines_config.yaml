@@ -33,7 +33,7 @@ annotations:
     genomes:
         hg19: /fhgfs/prod/ngs_resources/genomes/hg19/forBowtie2/hg19/index_woRandom/hg19
         mm10: /fhgfs/prod/ngs_resources/genomes/mm10/forBowtie2/mm10/index_woRandom/mm10
-    transcriptome:
+    transcriptomes:
         hg19: /fhgfs/groups/lab_bock/shared/resources/genomes/hg19/ucsc_hg19_ensembl_genes.gtf
         mm10: /fhgfs/groups/lab_bock/shared/resources/genomes/mm10/ucsc_mm10_ensembl_genes.gtf
     chrsizes:

@@ -709,18 +709,22 @@ class QuantseqSample(Sample):
         # Inherit paths from Sample by running Sample's setFilePaths()
         super(QuantseqSample, self).setFilePaths()
 
+        self.erccAlnRates = _os.path.join(self.dirs.sampleRoot, self.name + "_ercc.alnRates.txt")
+        self.erccAlnMetrics = _os.path.join(self.dirs.sampleRoot, self.name + "_ercc.alnMetrics.txt")
+        self.erccDupsMetrics = _os.path.join(self.dirs.sampleRoot, self.name + "_ercc.duplicates.txt")
+
         # Mapped: Tophat mapped, duplicates marked, removed
         self.dirs.mapped = _os.path.join(self.dirs.sampleRoot, "mapped")
         self.mapped = _os.path.join(self.dirs.mapped, "accepted_hits.bam")
         self.dups = _os.path.join(self.dirs.mapped, "accepted_hits.dups.bam")
         self.nodups = _os.path.join(self.dirs.mapped, "accepted_hits.nodups.bam")
         # ercc alignments
-        self.erccmapped = _os.path.join(self.dirs.mapped, self.name + "_ercc.bam")
-        self.erccdups = _os.path.join(self.dirs.mapped, self.name + "_ercc.dups.bam")
-        self.erccnodups = _os.path.join(self.dirs.mapped, self.name + "_ercc.nodups.bam")
+        self.erccMapped = _os.path.join(self.dirs.mapped, self.name + "_ercc.bam")
+        self.erccDups = _os.path.join(self.dirs.mapped, self.name + "_ercc.dups.bam")
+        self.erccNodups = _os.path.join(self.dirs.mapped, self.name + "_ercc.nodups.bam")
 
         # RNA quantification
         self.dirs.quant = _os.path.join(self.dirs.sampleRoot, "quantification")
         self.quant = _os.path.join(self.dirs.quant, "tophat-htseq_quantification.tsv")
-        self.erccquant = _os.path.join(self.dirs.quant, "tophat-htseq_quantification_ercc.tsv")
-        self.kallistoquant = _os.path.join(self.dirs.quant, "abundance.tsv")
+        self.erccQuant = _os.path.join(self.dirs.quant, "tophat-htseq_quantification_ercc.tsv")
+        self.kallistoQuant = _os.path.join(self.dirs.quant, "abundance.tsv")

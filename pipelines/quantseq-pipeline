@@ -63,7 +63,7 @@ def process(args, prj, sample):
     trims reads, aligns, marks and removes duplicates and indexes files.
     Transcript quantifications follows.
     """
-    print("Starting sample processing.")
+    print("Start processing Quant-seq sample %s." % sample.name)
 
     # Start Pypiper object
     pipe = Pypiper("pipe", sample.dirs.sampleRoot)
@@ -92,12 +92,13 @@ def process(args, prj, sample):
     if not sample.paired:
         cmd = tk.bam2fastq(
             inputBam=sample.unmappedBam,
-            outputFastq=sample.fastq,
+            outputFastq=sample.fastq1 if sample.paired else sample.fastq,
             outputFastq2=sample.fastq2 if sample.paired else None,
             unpairedFastq=sample.fastqUnpaired if sample.paired else None
         )
         pipe.call_lock(cmd, sample.fastq1 if sample.paired else sample.fastq, shell=True)
-        pipe.clean_add(sample.fastq, conditional=True)
+        if not sample.paired:
+            pipe.clean_add(sample.fastq, conditional=True)
         if sample.paired:
             pipe.clean_add(sample.fastq1, conditional=True)
             pipe.clean_add(sample.fastq2, conditional=True)
@@ -119,19 +120,108 @@ def process(args, prj, sample):
     )
     pipe.call_lock(cmd, sample.trimmed1 if sample.paired else sample.trimmed, shell=True)
     if not sample.paired:
-        pipe.clean_add(sample.fastq1, conditional=True)
+        pipe.clean_add(sample.trimmed, conditional=True)
     else:
         pipe.clean_add(sample.trimmed1, conditional=True)
         pipe.clean_add(sample.trimmed1Unpaired, conditional=True)
         pipe.clean_add(sample.trimmed2, conditional=True)
         pipe.clean_add(sample.trimmed2Unpaired, conditional=True)
 
-    # Quantify Transcripts
-    # Quantify alignemnts with HTseq-count
-    pipe.timestamp("Quantify read counts at gene level with htseq-count")
-    # TODO:
+    # Map
+    pipe.timestamp("Mapping sample with Tophat")
+    cmd = tk.topHatMap(
+        inputFastq=sample.trimmed1 if sample.paired else sample.trimmed,
+        outDir=sample.mapped,
+        genome=genomeIndexes[samplesMerged["genome"][sample]],
+        transcriptome=transcriptomes[samplesMerged["genome"][sample]],
+        cpus=args.cpus
+    )
+    pipe.call_lock(cmd, sample.mapped, shell=True)
+    pipe.clean_add(sample.mapped, conditional=True)
 
-    # Quantify with kallisto
+    pipe.timestamp("Mapping erccs with Bowtie2")
+    cmd = tk.bowtie2Map(
+        inputFastq1=sample.trimmed1 if sample.paired else sample.trimmed,
+        inputFastq2=sample.trimmed1 if sample.paired else None,
+        outputBam=sample.erccMapped,
+        log=sample.erccAlnRates,
+        metrics=sample.erccAlnMetrics,
+        genomeIndex=prj.config["annotations"]["genomes"][sample.genome],
+        maxInsert=args.maxinsert,
+        cpus=args.cpus
+    )
+    pipe.call_lock(cmd, sample.erccMapped, shell=True)
+    pipe.clean_add(sample.erccMapped, conditional=True)
+
+    # Mark duplicates
+    pipe.timestamp("Marking sample's duplicates")
+    cmd = tk.markDuplicates(
+        inputBam=sample.mapped,
+        outputBam=sample.dups,
+        metricsFile=sample.dupsMetrics,
+    )
+    pipe.call_lock(cmd, sample.dups, shell=True)
+    pipe.clean_add(sample.dups, conditional=True)
+
+    pipe.timestamp("Marking ERCC's duplicates")
+    cmd = tk.markDuplicates(
+        inputBam=sample.mapped,
+        outputBam=sample.erccDups,
+        metricsFile=sample.erccDupsMetrics
+    )
+    pipe.call_lock(cmd, sample.erccDups, shell=True)
+    pipe.clean_add(sample.erccDups, conditional=True)
+
+    # Remove duplicates
+    pipe.timestamp("Removing sample's duplicates")
+    cmd = tk.removeDuplicates(
+        inputBam=os.path.join(dataDir, "mapped", sampleName, "accepted_hits.dups.bam"),
+        outputBam=os.path.join(dataDir, "mapped", sampleName, "accepted_hits.nodups.bam"),
+        cpus=args.cpus
+    )
+    pipe.call_lock(cmd, sample.nodups, shell=True)
+    pipe.clean_add(sample.nodups, conditional=True)
+
+    pipe.timestamp("Removing ERCC's duplicates")
+    cmd = tk.removeDuplicates(
+        inputBam=os.path.join(dataDir, "mapped", sampleName, sampleName + "_ercc.dups.bam"),
+        outputBam=os.path.join(dataDir, "mapped", sampleName, sampleName + "_ercc.nodups.bam"),
+        cpus=args.cpus
+    )
+    pipe.call_lock(cmd, sample.erccNodups, shell=True)
+    pipe.clean_add(sample.erccNodups, conditional=True)
+
+    # Sort and index
+    cmd = tk.sortIndexBam(
+        inputBam=sample.nodups,
+        outputBam=sample.nodups
+    )
+    pipe.call_lock(cmd, "sample.nodups", shell=True)
+    cmd = tk.sortIndexBam(
+        inputBam=sample.erccNodups,
+        outputBam=sample.erccNodups
+    )
+    pipe.call_lock(cmd, "sample.erccNodups", shell=True)
+
+    # Quantify Transcripts
+    # With HTseq-count from alignments
+    pipe.timestamp("Quantify sample transcripts with htseq-count")
+    cmd = tk.htSeqCount(
+        inputBam=sample.nodups,
+        gtf=prj.config["annotations"]["transcriptomes"][sample.genome],
+        output=sample.quant
+    )
+    pipe.call_lock(cmd, sample.quant, shell=True)
+
+    pipe.timestamp("Quantify ERCC transcripts with htseq-count")
+    cmd = tk.htSeqCount(
+        inputBam=sample.erccNodups,
+        gtf=prj.config["annotations"]["transcriptomes"][sample.genome],
+        output=sample.erccQuant
+    )
+    pipe.call_lock(cmd, sample.erccQuant, shell=True)
+
+    # With kallisto from unmapped reads
     pipe.timestamp("Quantifying read counts with kallisto")
     cmd = tk.kallisto(
         inputFastq1=sample.trimmed1 if sample.paired else sample.trimmed,
@@ -139,9 +229,9 @@ def process(args, prj, sample):
         outputDir=sample.dirs.quant,
         transcriptomeIndex=prj.config["annotations"]["kallistoindex"][sample.genome]
     )
-    pipe.call_lock(cmd, sample.kallistoquant)
+    pipe.call_lock(cmd, sample.kallistoQuant)
 
-    print("Finished processing sample %s." % sample.sampleName)
+    print("Finished processing sample %s." % sample.name)
 
 
 def trimmomatic(inputFastq1, outputFastq1, cpus, adapters, log,

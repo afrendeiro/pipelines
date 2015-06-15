@@ -207,7 +207,7 @@ def indexBam(inputBam):
 
 
 def peakTools(inputBam, output, plot, cpus):
-    cmd = "run_spp.R -rf -savp -savp={0} -s=0:5:500 -c={1} -out={2}".format(plot, inputBam, output)
+    cmd = "Rscript run_spp.R -rf -savp -savp={0} -s=0:5:500 -c={1} -out={2}".format(plot, inputBam, output)
 
     return cmd
 

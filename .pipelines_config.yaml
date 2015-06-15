@@ -6,8 +6,8 @@ email: arendeiro@cemm.oeaw.ac.at
 
 # Parent paths where Project is going to be created
 paths:
-    parent: /data/groups/lab_bock/shared/projects
-    parenthtml: /data/groups/lab_bock/shared/projects/
+    parent: /home/afr/workspace/projects
+    parenthtml: /home/afr/workspace/projects/
 
 # Parent Project root url
 url: http://www.biomedical-sequencing.at/bocklab/arendeiro/
@@ -33,8 +33,9 @@ annotations:
     genomes:
         hg19: /fhgfs/prod/ngs_resources/genomes/hg19/forBowtie2/hg19/index_woRandom/hg19
         mm10: /fhgfs/prod/ngs_resources/genomes/mm10/forBowtie2/mm10/index_woRandom/mm10
-    transcriptomes:
-        hg19: /fhgfs/groups/lab_bock/shared/resources/genomes/hg19/ucsc_hg19_ensembl_genes.gtf
+    transcriptome:
+        hg38: /home/arendeiro/Homo_sapiens.GRCh38.80.gtf
+        hg19: /home/arendeiro/Homo_sapiens.GRCh37.75.gtf
         mm10: /fhgfs/groups/lab_bock/shared/resources/genomes/mm10/ucsc_mm10_ensembl_genes.gtf
     chrsizes:
         hg19: /fhgfs/groups/lab_bock/arendeiro/share/hg19.chrom.sizes

@@ -1,4 +1,5 @@
 from setuptools import setup
+import os
 
 setup(
     name="pipelines",
@@ -24,6 +25,7 @@ setup(
         "lib/get5primePosition.py",
         "lib/spp_peak_calling.R"
     ],
+    data_files=[(os.path.expanduser("~"), ['.pipelines_config.yaml'])],
     include_package_data=True,
     zip_safe=False
 )

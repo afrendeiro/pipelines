@@ -141,7 +141,7 @@ def process(args, prj, sample):
             cpus=args.cpus,
             adapters=prj.config["adapters"]
         )
-        pipe.call_lock(cmd, sample.sampleName + "-trimmed-pair1.fastq" if sample.paired else sample.sampleName + "-trimmed.fastq", shell=True)
+        pipe.call_lock(cmd, os.path.join(sample.dirs.unmapped, sample.name + "-trimmed-pair1.fastq") if sample.paired else os.path.join(sample.dirs.unmapped, sample.name + "-trimmed.fastq"), shell=True)
         # move files to have common name
         if not sample.paired:
             cmd = tk.moveFile(

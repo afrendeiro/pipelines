@@ -16,7 +16,7 @@ setup(
     author_email="arendeiro@cemm.oeaw.ac.at",
     license="GPL2",
     packages=["pipelines"],
-    install_requires=["numpy", "pandas"],
+    install_requires=["pyyaml", "numpy", "pandas"],
     scripts=[
         "pipelines/ngsProject",
         "pipelines/chipseq-pipeline",

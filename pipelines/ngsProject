@@ -65,7 +65,7 @@ def addArgs(parser):
     parser.add_argument("--compare", dest="compare", action="store_true",
                         help="Do not loop through samples, but perform comparisons betweem them.")
     parser.add_argument("-r", "--rm-tmp", dest="rm_tmp", action="store_true",
-                        help="Keep intermediary files. If not it will only preserve final files. Default=False.")
+                        help="Remove intermediary files. If not it will preserve all intermediary files. Default=False.")
     parser.add_argument("--dry-run", dest="dry_run", action="store_true",
                         help="Dry run. Assemble commands, but do not submit jobs to slurm. Default=False.")
     parser.add_argument("--no-checks", dest="checks", action="store_false",
@@ -96,10 +96,6 @@ def addArgs(parser):
     parser.add_argument("--window-size", default=1000, dest="windowsize",
                         help="Window size used for genome-wide correlations. Default=1000.",
                         type=int)
-    parser.add_argument("-s", "--stage", default="all", dest="stage",
-                        choices=["all", "qc", "callpeaks", "findmotifs", "centerpeaks",
-                                 "annotatepeaks", "peakanalysis", "tssanalysis", "footprints", "frip"],
-                        help="Run only these stages. Default=all.", type=str)
     parser.add_argument("--peak-caller", default="macs2", choices=["macs2", "spp"],
                         dest="peak_caller", help="Peak caller to use. Default=macs2.", type=str)
     parser.add_argument("--peak-window-width", default=2000,

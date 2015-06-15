@@ -82,7 +82,7 @@ class Project(object):
         self.dirs = Paths()
 
         # Read configuration file
-        with open(_os.path.join(_os.path.expanduser("~"), "pipelines_config.yaml"), 'r') as handle:
+        with open(_os.path.join(_os.path.expanduser("~"), ".pipelines_config.yaml"), 'r') as handle:
             self.config = _yaml.load(handle)
 
         # If kwargs were passed, overule paths specified in the config with new ones.
@@ -235,7 +235,7 @@ class SampleSheet(object):
         self.csv = csv
 
         # Read configuration file
-        with open(_os.path.join(_os.path.expanduser("~"), "pipelines_config.yaml"), 'r') as handle:
+        with open(_os.path.join(_os.path.expanduser("~"), ".pipelines_config.yaml"), 'r') as handle:
             self.config = _yaml.load(handle)
 
         # Sample merging options:
@@ -290,7 +290,10 @@ class SampleSheet(object):
         Creates samples from annotation sheet dependent on technique and adds them to the project.
         """
         for sample in range(len(self.df)):
-            technique = self.df.ix[sample]["technique"]
+            technique = self.df.ix[sample]["technique"].upper()
+            print(self.config["techniques"]["chipseq"])
+            print(self.config["techniques"]["cm"])
+            print(technique)
             if technique in self.config["techniques"]["chipseq"]:
                 self.samples.append(ChIPseqSample(self.df.ix[sample]))
             elif technique in self.config["techniques"]["cm"]:
@@ -400,7 +403,7 @@ class Sample(object):
         self.generateName()
 
         # Read configuration file
-        with open(_os.path.join(expanduser("~"), "pipelines_config.yaml"), 'r') as handle:
+        with open(_os.path.join(expanduser("~"), ".pipelines_config.yaml"), 'r') as handle:
             self.config = _yaml.load(handle)
 
         # check if sample is to be analysed with cuts
@@ -475,20 +478,24 @@ class Sample(object):
         else:
             bam = self.unmappedBam
 
-        # view reads
-        p = sp.Popen(['samtools', 'view', bam], stdout=sp.PIPE)
+        try:
+            # view reads
+            p = sp.Popen(['samtools', 'view', bam], stdout=sp.PIPE)
 
-        # Count paired alignments
-        paired = 0
-        readLength = Counter()
-        while n > 0:
-            line = p.stdout.next().split("\t")
-            flag = int(line[1])
-            readLength[len(line[9])] += 1
-            if 1 & flag:  # check decimal flag contains 1 (paired)
-                paired += 1
-            n -= 1
-        p.kill()
+            # Count paired alignments
+            paired = 0
+            readLength = Counter()
+            while n > 0:
+                line = p.stdout.next().split("\t")
+                flag = int(line[1])
+                readLength[len(line[9])] += 1
+                if 1 & flag:  # check decimal flag contains 1 (paired)
+                    paired += 1
+                n -= 1
+            p.kill()
+        except Exception as e:
+            print("Bam file does not exist or cannot be read: %s" % bam)
+            raise e
 
         # Get most abundant read length
         self.readLength = sorted(readLength)[-1]

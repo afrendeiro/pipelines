@@ -249,12 +249,13 @@ class SampleSheet(object):
                 self.opts[key] = self.config["options"][key]
 
         self.samples = list()
-        self._columns = ["cellLine", "numberCells", "technique", "ip", "patient",
-                         "treatment", "biologicalReplicate", "technicalReplicate", "unmappedBam", "genome"]
         self.checkSheet()
 
     def __repr__(self):
-        return "SampleSheet for project '%s'" % self.project
+        if hasattr(self, "project"):
+            return "SampleSheet for project '%s' with %i samples." % (self.project, len(self.df))
+        else:
+            return "SampleSheet with %i samples." % len(self.df)
 
     def asDataFrame(self, all=True):
         """
@@ -264,7 +265,7 @@ class SampleSheet(object):
 
         # Filter some columns out
         if not all:
-            columns = self._columns
+            columns = self.df.columns.tolist()
             if hasattr(df, "unmapped"):
                 columns[columns.index("unmappedBam")] = "unmapped"
             df = df[["sampleName"] + columns + ["mapped"]]
@@ -280,7 +281,9 @@ class SampleSheet(object):
         except IOError("Given csv file couldn't be read.") as e:
             raise e
 
-        missing = [col for col in self._columns if col not in self.df.columns]
+        req = ["technique", "genome", "biologicalReplicate", "technicalReplicate", "unmappedBam"]
+        missing = [col for col in req if col not in self.df.columns]
+
         if len(missing) != 0:
             raise TypeError("Annotation sheet is missing columns: %s" % " ".join(missing))
 
@@ -310,10 +313,10 @@ class SampleSheet(object):
         Produces biological replicate samples from merged technical replicates.
         """
         # copy columns list
-        attributes = self._columns[:]
+        attributes = self.df.columns.tolist()[:]
         # ignore some fields in the annotation sheet
-        attributes.pop(self._columns.index("unmappedBam"))
-        attributes.pop(self._columns.index("technicalReplicate"))
+        attributes.pop(self.df.columns.tolist().index("unmappedBam"))
+        attributes.pop(self.df.columns.tolist().index("technicalReplicate"))
 
         # get technical replicates -> biological replicates
         for key, values in self.df.groupby(attributes).groups.items():
@@ -329,11 +332,11 @@ class SampleSheet(object):
         Produces samples from merged biological replicates.
         """
         # copy columns list
-        attributes = self._columns[:]
+        attributes = self.df.columns.tolist()[:]
         # ignore some fields in the annotation sheet
-        attributes.pop(self._columns.index("unmappedBam"))
-        attributes.pop(self._columns.index("technicalReplicate"))
-        attributes.pop(self._columns.index("biologicalReplicate"))
+        attributes.pop(self.df.columns.tolist().index("unmappedBam"))
+        attributes.pop(self.df.columns.tolist().index("technicalReplicate"))
+        attributes.pop(self.df.columns.tolist().index("biologicalReplicate"))
 
         # get biological replicates -> merged biological replicates
         for key, values in self.df.groupby(attributes).groups.items():
@@ -395,7 +398,11 @@ class Sample(object):
         for key, value in series.to_dict().items():
             setattr(self, key, value)
 
+        # Check if required attributes exist and are not empty
         self.checkValid()
+
+        # Get name for sample:
+        # this is a concatenation of all passed Series attributes except "unmappedBam"
         self.generateName()
 
         # Read configuration file
@@ -429,7 +436,7 @@ class Sample(object):
         """
         Check if any of its important attributes is None.
         """
-        req = ["genome", "biologicalReplicate", "technicalReplicate", "unmappedBam"]
+        req = ["technique", "genome", "biologicalReplicate", "technicalReplicate", "unmappedBam"]
 
         if not all([hasattr(self, attr) for attr in req]):
             raise ValueError("Required columns for sample do not exist.")
@@ -442,12 +449,11 @@ class Sample(object):
         Generates a name for the sample by joining some of its attribute strings.
         """
         self.name = "_".join(
-            str(x) for x in [
-                self.cellLine, self.numberCells, self.technique,
-                self.ip, self.patient, self.treatment,
-                self.biologicalReplicate, self.technicalReplicate,
-                self.genome
-            ]
+            [str(self.__getattribute__(attr)) for attr in [
+                "cellLine", "numberCells", "technique",
+                "ip", "patient", "patientID", "sampleID", "treatment",
+                "biologicalReplicate", "technicalReplicate",
+                "experimentName", "genome"] if hasattr(self, attr)]
         )
         self.sampleName = self.name
 
@@ -549,7 +555,7 @@ class Sample(object):
         """
         Creates sample directory structure if it doesn't exist.
         """
-        for name, path in self.dirs.__dict__.items():
+        for path in self.dirs.__dict__.values():
             if not _os.path.exists(path):
                 _os.makedirs(path)
 
@@ -557,17 +563,22 @@ class Sample(object):
         """
         Get a colour for a genome browser track based on the IP.
         """
+        # This is ChIP-centric, and therefore if no "ip" attrbute,
+        # will just pick one color randomly from a gradient.
         import random
 
-        if self.ip in self.config["trackcolours"].keys():
-            self.trackColour = self.config["trackcolours"][self.ip]
-        else:
-            if self.technique in ["ATAC", "ATACSEQ", "ATAC-SEQ"]:
-                self.trackColour = self.config["trackcolours"]["ATAC"]
-            elif self.technique in ["DNASE", "DNASESEQ", "DNASE-SEQ"]:
-                self.trackColour = self.config["trackcolours"]["DNASE"]
+        if hasattr(self, "ip"):
+            if self.ip in self.config["trackcolours"].keys():
+                self.trackColour = self.config["trackcolours"][self.ip]
             else:
-                self.trackColour = random.sample(self.config["colourgradient"], 1)[0]  # pick one randomly
+                if self.technique in ["ATAC", "ATACSEQ", "ATAC-SEQ"]:
+                    self.trackColour = self.config["trackcolours"]["ATAC"]
+                elif self.technique in ["DNASE", "DNASESEQ", "DNASE-SEQ"]:
+                    self.trackColour = self.config["trackcolours"]["DNASE"]
+                else:
+                    self.trackColour = random.sample(self.config["colourgradient"], 1)[0]  # pick one randomly
+        else:
+            self.trackColour = random.sample(self.config["colourgradient"], 1)[0]  # pick one randomly
 
 
 class ChIPseqSample(Sample):

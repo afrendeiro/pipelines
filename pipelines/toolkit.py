@@ -207,7 +207,7 @@ def indexBam(inputBam):
 
 
 def peakTools(inputBam, output, plot, cpus):
-    cmd = "Rscript run_spp.R -rf -savp -savp={0} -s=0:5:500 -c={1} -out={2}".format(plot, inputBam, output)
+    cmd = "Rscript `which run_spp.R` -rf -savp -savp={0} -s=0:5:500 -c={1} -out={2}".format(plot, inputBam, output)
 
     return cmd
 
@@ -343,7 +343,7 @@ def macs2PlotModel(sampleName, outputDir):
 def sppCallPeaks(treatmentBam, controlBam, treatmentName, controlName, outputDir, broad, cpus):
     broad = "TRUE" if broad else "FALSE"
 
-    cmd = "Rscript spp_peak_calling.R {0} {1} {2} {3} {4} {5} {6}""".format(
+    cmd = "Rscript `which spp_peak_calling.R` {0} {1} {2} {3} {4} {5} {6}""".format(
         treatmentBam, controlBam, treatmentName, controlName, broad, cpus, outputDir
     )
 
@@ -359,7 +359,7 @@ def bamToBed(inputBam, outputBed):
 def zinbaCallPeaks(treatmentBed, controlBed, cpus, tagmented=False):
     fragmentLength = 80 if tagmented else 180
 
-    cmd = "Rscript zinba.R -l {0} -t {1} -c {2}".format(fragmentLength, treatmentBed, controlBed)
+    cmd = "Rscript `which zinba.R` -l {0} -t {1} -c {2}".format(fragmentLength, treatmentBed, controlBed)
 
     return cmd
 

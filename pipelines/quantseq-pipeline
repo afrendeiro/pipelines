@@ -131,7 +131,7 @@ def process(args, prj, sample):
     pipe.timestamp("Mapping sample with Tophat")
     cmd = tk.topHatMap(
         inputFastq=sample.trimmed1 if sample.paired else sample.trimmed,
-        outDir=sample.mapped,
+        outDir=sample.dirs.mapped,
         genome=prj.config["annotations"]["genomes"][sample.genome],
         transcriptome=prj.config["annotations"]["transcriptomes"][sample.genome],
         cpus=args.cpus
@@ -146,7 +146,7 @@ def process(args, prj, sample):
         outputBam=sample.erccMapped,
         log=sample.erccAlnRates,
         metrics=sample.erccAlnMetrics,
-        genomeIndex=prj.config["annotations"]["genomes"][sample.genome],
+        genomeIndex=prj.config["annotations"]["genomes"]["ercc"],
         maxInsert=args.maxinsert,
         cpus=args.cpus
     )
@@ -216,7 +216,7 @@ def process(args, prj, sample):
     pipe.timestamp("Quantify ERCC transcripts with htseq-count")
     cmd = tk.htSeqCount(
         inputBam=sample.erccNodups,
-        gtf=prj.config["annotations"]["transcriptomes"][sample.genome],
+        gtf=prj.config["annotations"]["transcriptomes"]["ercc"],
         output=sample.erccQuant
     )
     pipe.call_lock(cmd, sample.erccQuant, shell=True)

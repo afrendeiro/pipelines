@@ -31,12 +31,14 @@ genomes:
 # Paths to genome annotations
 annotations:
     genomes:
-        hg19: /fhgfs/prod/ngs_resources/genomes/hg19/forBowtie2/hg19/index_woRandom/hg19
-        mm10: /fhgfs/prod/ngs_resources/genomes/mm10/forBowtie2/mm10/index_woRandom/mm10
-    transcriptome:
+        hg19: /data/prod/ngs_resources/genomes/hg19/forBowtie2/withoutRandom/hg19
+        mm10: /data/prod/ngs_resources/genomes/hg19/forBowtie2/withoutRandom/mm10
+        ercc: /fhgfs/groups/lab_bock/shared/resources/genomes/ERCC92/indexed_bowtie2/ERCC92
+    transcriptomes:
         hg38: /home/arendeiro/Homo_sapiens.GRCh38.80.gtf
         hg19: /home/arendeiro/Homo_sapiens.GRCh37.75.gtf
         mm10: /fhgfs/groups/lab_bock/shared/resources/genomes/mm10/ucsc_mm10_ensembl_genes.gtf
+        ercc: /home/arendeiro/ERCC92.gtf
     chrsizes:
         hg19: /fhgfs/groups/lab_bock/arendeiro/share/hg19.chrom.sizes
         mm10: /fhgfs/groups/lab_bock/arendeiro/share/mm10.chrom.sizes

@@ -155,7 +155,7 @@ def topHatMap(inputFastq, outDir, genome, transcriptome, cpus):
     # TODO:
     # Allow paired input
     cmd = "tophat --GTF {0} --b2-L 15 --library-type fr-unstranded --mate-inner-dist 120".format(transcriptome)
-    cmd += "--max-multihits 100 --no-coverage-search"
+    cmd += " --max-multihits 100 --no-coverage-search"
     cmd += " --num-threads {0} --output-dir {1} {2} {3}".format(cpus, outDir, genome, inputFastq)
 
     return cmd

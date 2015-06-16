@@ -161,7 +161,7 @@ def sampleLoop(args, prj):
                     sample.ctrl = ctrl[0]
                 else:
                     # if not, process sample anyway, but without a matched control
-                    print("Provided control sample name does not exist or is ambiguous: %s" % ctrl)
+                    print("Provided control sample name does not exist or is ambiguous: %s" % sample.controlSampleName)
 
         # save pickle with all objects (this time, 2nd element is a tuple!)
         pickle.dump((prj, sample, args), open(samplePickle, "wb"))
@@ -191,13 +191,12 @@ def sampleLoop(args, prj):
 
         # Submit to slurm
         if not args.dry_run:
-            print("Submitting job to slurm: %s" % jobName)
             status = tk.slurmSubmitJob(jobFile)
 
             if status != 0:
                 print("Could not submit job '%s' to slurm." % jobFile)
                 sys.exit(1)
-            print("Submitted job to slurm: '%s'" % jobFile)
+            print("Submitted job to slurm: '%s'" % jobName)
 
         # Create link to trackHub in project folder
         tk.linkToTrackHub(

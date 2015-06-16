@@ -133,7 +133,6 @@ class Project(object):
         self.dirs.data = _os.path.join(self.dirs.root, "data")
         # Results
         self.dirs.results = _os.path.join(self.dirs.root, "results")
-        self.dirs.qc = _os.path.join(self.dirs.results, "qc")
         self.dirs.plots = _os.path.join(self.dirs.results, "plots")
         # Html structure
         self.dirs.html = _os.path.join(self.dirs.parenthtml, self.name)
@@ -287,26 +286,37 @@ class SampleSheet(object):
         if len(missing) != 0:
             raise TypeError("Annotation sheet is missing columns: %s" % " ".join(missing))
 
+    def makeSample(self, series):
+        """
+        Make a children of class Sample dependent on its "technique" attribute.
+
+        :param series: Pandas `Series` object.
+        :type series: pandas.Series
+        :return: An object or class `Sample` or a child of that class.
+        :rtype: pipelines.Sample
+        """
+        technique = series["technique"].upper()
+        if technique in self.config["techniques"]["chipseq"]:
+            return ChIPseqSample(series)
+        elif technique in self.config["techniques"]["cm"]:
+            return CMSample(series)
+        elif technique in self.config["techniques"]["dnase"]:
+            return DNaseSample(series)
+        elif technique in self.config["techniques"]["atacseq"]:
+            return ATACseqSample(series)
+        elif technique in self.config["techniques"]["quantseq"]:
+            return QuantseqSample(series)
+        else:
+            raise TypeError("Sample is not in known sample class.")
+            # I might want to change this behaviour to return a generic sample
+            # self.samples.append(Sample(self.df.ix[sample]))
+
     def makeSamples(self):
         """
         Creates samples from annotation sheet dependent on technique and adds them to the project.
         """
-        for sample in range(len(self.df)):
-            technique = self.df.ix[sample]["technique"].upper()
-            if technique in self.config["techniques"]["chipseq"]:
-                self.samples.append(ChIPseqSample(self.df.ix[sample]))
-            elif technique in self.config["techniques"]["cm"]:
-                self.samples.append(CMSample(self.df.ix[sample]))
-            elif technique in self.config["techniques"]["dnase"]:
-                self.samples.append(DNaseSample(self.df.ix[sample]))
-            elif technique in self.config["techniques"]["atacseq"]:
-                self.samples.append(ATACseqSample(self.df.ix[sample]))
-            elif technique in self.config["techniques"]["quantseq"]:
-                self.samples.append(QuantseqSample(self.df.ix[sample]))
-            else:
-                raise TypeError("Sample is not in known sample class.")
-                # I might want to change this behaviour
-                # self.samples.append(Sample(self.df.ix[sample]))
+        for i in range(len(self.df)):
+            self.samples.append(self.makeSample(self.df.ix[i]))
 
     def getBiologicalReplicates(self):
         """
@@ -315,8 +325,10 @@ class SampleSheet(object):
         # copy columns list
         attributes = self.df.columns.tolist()[:]
         # ignore some fields in the annotation sheet
-        attributes.pop(self.df.columns.tolist().index("unmappedBam"))
-        attributes.pop(self.df.columns.tolist().index("technicalReplicate"))
+        attributes.pop(attributes.index("unmappedBam"))
+        attributes.pop(attributes.index("technicalReplicate"))
+        if "controlSampleName" in attributes:
+            attributes.pop(attributes.index("controlSampleName"))
 
         # get technical replicates -> biological replicates
         for key, values in self.df.groupby(attributes).groups.items():
@@ -325,7 +337,7 @@ class SampleSheet(object):
                 rep["technicalReplicate"] = 0
                 rep["unmappedBam"] = self.df.ix[values]["unmappedBam"].tolist()
                 # append biological replicate to samples
-                self.samples.append(Sample(rep))
+                self.samples.append(self.makeSample(rep))
 
     def getMergedBiologicalReplicates(self):
         """
@@ -334,9 +346,11 @@ class SampleSheet(object):
         # copy columns list
         attributes = self.df.columns.tolist()[:]
         # ignore some fields in the annotation sheet
-        attributes.pop(self.df.columns.tolist().index("unmappedBam"))
-        attributes.pop(self.df.columns.tolist().index("technicalReplicate"))
-        attributes.pop(self.df.columns.tolist().index("biologicalReplicate"))
+        attributes.pop(attributes.index("unmappedBam"))
+        attributes.pop(attributes.index("technicalReplicate"))
+        attributes.pop(attributes.index("biologicalReplicate"))
+        if "controlSampleName" in attributes:
+            attributes.pop(attributes.index("controlSampleName"))
 
         # get biological replicates -> merged biological replicates
         for key, values in self.df.groupby(attributes).groups.items():
@@ -348,7 +362,7 @@ class SampleSheet(object):
                     rep["technicalReplicate"] = 0
                     rep["unmappedBam"] = self.df.ix[values]["unmappedBam"].tolist()
                     # append merged biological replicate to samples
-                    self.samples.append(Sample(rep))
+                    self.samples.append(self.makeSample(rep))
 
     def to_csv(self, path, all=False):
         """
@@ -624,6 +638,9 @@ class ChIPseqSample(Sample):
         # Coverage: read coverage in windows genome-wide
         self.dirs.coverage = _os.path.join(self.dirs.sampleRoot, "coverage")
         self.coverage = _os.path.join(self.dirs.coverage, self.name + ".cov")
+
+        self.qc = _os.path.join(self.dirs.sampleRoot, self.name + "_QC.tsv")
+        self.qcPlot = _os.path.join(self.dirs.sampleRoot, self.name + "_QC.pdf")
 
         # Peaks: peaks called and derivate files
         self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks")

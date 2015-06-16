@@ -265,11 +265,11 @@ def process(args, prj, sample):
     # Assess NSC, RSC
     cmd = tk.peakTools(
         inputBam=sample.nodups,
-        output=os.path.join(prj.dirs.qc, "sample_QC.tsv"),
-        plot=os.path.join(prj.dirs.qc, sample.name + "_QC.pdf"),
+        output=sample.qc,
+        plot=sample.qcPlot,
         cpus=args.cpus
     )
-    pipe.call_lock(cmd, os.path.join(prj.dirs.qc, "sample_QC.tsv"), shell=True)
+    pipe.call_lock(cmd, sample.qcPlot, shell=True)
 
     # If sample has "ctrl" attribute, proceed with remaining (peak calling, etc...)
     if hasattr(sample, "ctrl"):

@@ -153,7 +153,6 @@ def sampleLoop(args, prj):
 
         # If sample has control attribute, get that sample and pair them
         if hasattr(sample, "controlSampleName"):
-            continue
             if type(sample.controlSampleName) == str:
                 # Assign the sample with that name to ctrl
                 ctrl = [s for s in prj.samples if s.sampleName == sample.controlSampleName]

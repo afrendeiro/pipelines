@@ -160,7 +160,8 @@ def sampleLoop(args, prj):
                 if len(ctrl) == 1:
                     sample.ctrl = ctrl[0]
                 else:
-                    print("Provided control sample name is not unambigous: %s" % ctrl)
+                    # if not, process sample anyway, but without a matched control
+                    print("Provided control sample name does not exist or is ambiguous: %s" % ctrl)
                     continue
 
         # save pickle with all objects (this time, 2nd element is a tuple!)

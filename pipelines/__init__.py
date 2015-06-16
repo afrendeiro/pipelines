@@ -191,8 +191,8 @@ class Project(object):
             if sample.genome not in self.config["genomes"]:
                 raise TypeError("Sample's genome is not supported.")
             self.addSample(sample)
-            sample.setFilePaths()
-            sample.makeSampleDirs()
+            #sample.setFilePaths()
+            #sample.makeSampleDirs()
 
     def addSample(self, sample):
         """
@@ -417,7 +417,7 @@ class Sample(object):
         self.getTrackColour()
 
         # Get read type
-        self.getReadType()
+        #self.getReadType()
 
         # Get type of factor
         self.broad = True if self.technique in self.config["broadfactors"] else False
@@ -453,7 +453,7 @@ class Sample(object):
                 "cellLine", "numberCells", "technique",
                 "ip", "patient", "patientID", "sampleID", "treatment",
                 "biologicalReplicate", "technicalReplicate",
-                "experimentName", "genome"] if hasattr(self, attr)]
+                "experimentName", "genome"] if hasattr(self, attr) and str(self.__getattribute__(attr)) != "nan"]
         )
         self.sampleName = self.name
 
@@ -610,7 +610,7 @@ class ChIPseqSample(Sample):
         Sets the paths of all files for this sample.
         """
         # Inherit paths from Sample by running Sample's setFilePaths()
-        super(ChIPseqSample, self).setFilePaths()
+        #super(ChIPseqSample, self).setFilePaths()
 
         # Files in the root of the sample dir
         self.frip = _os.path.join(self.dirs.sampleRoot, self.name + "_FRiP.txt")

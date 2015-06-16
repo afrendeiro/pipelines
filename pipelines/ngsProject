@@ -196,11 +196,11 @@ def sampleLoop(args, prj):
             status = tk.slurmSubmitJob(jobFile)
 
             if status != 0:
-                print("Slurm job '%s' not successfull" % jobFile)
+                print("Could not submit job '%s' to slurm." % jobFile)
                 sys.exit(1)
-            print("Project '%s'submission finished successfully." % args.project_name)
+            print("Submitted job to slurm: '%s'" % jobFile)
 
-        # Create link to sample in trackHub
+        # Create link to trackHub in project folder
         tk.linkToTrackHub(
             trackHubURL=os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(sample.genome)),
             fileName=os.path.join(prj.dirs.root, "ucsc_tracks_{0}.html".format(sample.genome)),

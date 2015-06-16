@@ -165,7 +165,7 @@ def process(args, prj, sample):
 
     pipe.timestamp("Marking ERCC's duplicates")
     cmd = tk.markDuplicates(
-        inputBam=sample.mapped,
+        inputBam=sample.erccMapped,
         outputBam=sample.erccDups,
         metricsFile=sample.erccDupsMetrics
     )
@@ -175,21 +175,19 @@ def process(args, prj, sample):
     # Remove duplicates
     pipe.timestamp("Removing sample's duplicates")
     cmd = tk.removeDuplicates(
-        inputBam=os.path.join(dataDir, "mapped", sampleName, "accepted_hits.dups.bam"),
-        outputBam=os.path.join(dataDir, "mapped", sampleName, "accepted_hits.nodups.bam"),
+        inputBam=sample.dups,
+        outputBam=sample.nodups,
         cpus=args.cpus
     )
     pipe.call_lock(cmd, sample.nodups, shell=True)
-    pipe.clean_add(sample.nodups, conditional=True)
 
     pipe.timestamp("Removing ERCC's duplicates")
     cmd = tk.removeDuplicates(
-        inputBam=os.path.join(dataDir, "mapped", sampleName, sampleName + "_ercc.dups.bam"),
-        outputBam=os.path.join(dataDir, "mapped", sampleName, sampleName + "_ercc.nodups.bam"),
+        inputBam=sample.erccDups,
+        outputBam=sample.erccNodups,
         cpus=args.cpus
     )
     pipe.call_lock(cmd, sample.erccNodups, shell=True)
-    pipe.clean_add(sample.erccNodups, conditional=True)
 
     # Sort and index
     cmd = tk.sortIndexBam(

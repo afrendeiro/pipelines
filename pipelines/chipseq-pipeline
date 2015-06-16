@@ -67,7 +67,6 @@ def process(args, prj, sample):
     and removed, indexed (and shifted if necessary) Bam files
     along with a UCSC browser track.
     """
-
     print("Start processing ChIP-seq sample %s." % sample.name)
 
     # Start Pypiper object

@@ -750,6 +750,8 @@ class QuantseqSample(Sample):
         self.erccMapped = _os.path.join(self.dirs.mapped, self.name + "_ercc.bam")
         self.erccDups = _os.path.join(self.dirs.mapped, self.name + "_ercc.dups.bam")
         self.erccNodups = _os.path.join(self.dirs.mapped, self.name + "_ercc.nodups.bam")
+        # kallisto pseudoalignments
+        self.pseudomapped = _os.path.join(self.dirs.mapped, self.name + ".pseudoalignment.bam"),
 
         # RNA quantification
         self.dirs.quant = _os.path.join(self.dirs.sampleRoot, "quantification")

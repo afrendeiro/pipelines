@@ -222,13 +222,13 @@ def process(args, prj, sample):
     # With kallisto from unmapped reads
     pipe.timestamp("Quantifying read counts with kallisto")
     cmd = tk.kallisto(
-        inputFastq1=sample.trimmed1 if sample.paired else sample.trimmed,
+        inputFastq=sample.trimmed1 if sample.paired else sample.trimmed,
         inputFastq2=sample.trimmed1 if sample.paired else None,
         outputDir=sample.dirs.quant,
+        outputBam=sample.pseudomapped,
         transcriptomeIndex=prj.config["annotations"]["kallistoindex"][sample.genome]
+        cpus=args.cpus,
     )
-    pipe.call_lock(cmd, sample.kallistoQuant)
-
     print("Finished processing sample %s." % sample.name)
 
 

@@ -191,8 +191,8 @@ class Project(object):
             if sample.genome not in self.config["genomes"]:
                 raise TypeError("Sample's genome is not supported.")
             self.addSample(sample)
-            #sample.setFilePaths()
-            #sample.makeSampleDirs()
+            sample.setFilePaths()
+            sample.makeSampleDirs()
 
     def addSample(self, sample):
         """
@@ -417,7 +417,7 @@ class Sample(object):
         self.getTrackColour()
 
         # Get read type
-        #self.getReadType()
+        self.getReadType()
 
         # Get type of factor
         self.broad = True if self.technique in self.config["broadfactors"] else False
@@ -603,14 +603,14 @@ class ChIPseqSample(Sample):
         super(ChIPseqSample, self).__init__(series)
 
     def __repr__(self):
-        return "Sample '%s'" % self.name
+        return "ChIP-seq sample '%s'" % self.name
 
     def setFilePaths(self):
         """
         Sets the paths of all files for this sample.
         """
         # Inherit paths from Sample by running Sample's setFilePaths()
-        #super(ChIPseqSample, self).setFilePaths()
+        super(ChIPseqSample, self).setFilePaths()
 
         # Files in the root of the sample dir
         self.frip = _os.path.join(self.dirs.sampleRoot, self.name + "_FRiP.txt")
@@ -711,7 +711,7 @@ class QuantseqSample(Sample):
         super(QuantseqSample, self).__init__(series)
 
     def __repr__(self):
-        return "Sample '%s'" % self.name
+        return "Quant-seq sample '%s'" % self.name
 
     def setFilePaths(self):
         """

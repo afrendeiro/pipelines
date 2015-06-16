@@ -162,7 +162,6 @@ def sampleLoop(args, prj):
                 else:
                     # if not, process sample anyway, but without a matched control
                     print("Provided control sample name does not exist or is ambiguous: %s" % ctrl)
-                    continue
 
         # save pickle with all objects (this time, 2nd element is a tuple!)
         pickle.dump((prj, sample, args), open(samplePickle, "wb"))

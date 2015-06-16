@@ -298,7 +298,7 @@ def linkToTrackHub(trackHubURL, fileName, genome):
 def htSeqCount(inputBam, gtf, output):
     sam = inputBam.replace("bam", "sam")
 
-    cmd1 = "samtools view {0} > {3}".format(inputBam, sam)
+    cmd1 = "samtools view {0} > {1}".format(inputBam, sam)
 
     cmd2 = "htseq-count -f sam -t exon -i transcript_id -m union {0} {1} > {2}".format(sam, gtf, output)
 

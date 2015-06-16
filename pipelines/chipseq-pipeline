@@ -259,7 +259,8 @@ def process(args, prj, sample):
     )
     pipe.call_lock(cmd, sample.coverage, shell=True)
 
-    # Assess NSC, RSC
+    # Calculate NSC, RSC
+    pipe.timestamp("Assessing signal/noise in sample")
     cmd = tk.peakTools(
         inputBam=sample.nodups,
         output=sample.qc,
@@ -268,164 +269,172 @@ def process(args, prj, sample):
     )
     pipe.call_lock(cmd, sample.qcPlot, shell=True)
 
-    # If sample has "ctrl" attribute, proceed with remaining (peak calling, etc...)
-    if hasattr(sample, "ctrl"):
-        if args.peak_caller == "macs2":
-            # make dir for output (macs fails if it does not exist)
-            if not os.path.exists(os.path.join(sample.dirs.peaks, sample.name)):
-                os.makedirs(os.path.join(sample.dirs.peaks, sample.name))
+    # If sample does not have "ctrl" attribute, finish processing it.
+    if not hasattr(sample, "ctrl"):
+        print("Finished processing sample %s." % sample.name)
+        continue
 
-            # For point-source factors use default settings
-            # For broad factors use broad settings
-            cmd = tk.macs2CallPeaks(
-                treatmentBam=sample.nodups,
-                controlBam=sample.ctrl.nodups,
-                outputDir=os.path.join(sample.dirs.peaks, sample.name),
-                sampleName=sample.name,
-                genome=sample.genome,
-                broad=True if sample.broad else False
-            )
-            pipe.call_lock(cmd, sample.peaks, shell=True)
+    if args.peak_caller == "macs2":
+        pipe.timestamp("Calling peaks with MACS2")
+        # make dir for output (macs fails if it does not exist)
+        if not os.path.exists(sample.dirs.peaks):
+            os.makedirs(sample.dirs.peaks)
 
-            cmd = tk.macs2PlotModel(
-                sampleName=sample.name,
-                outputDir=os.path.join(sample.dirs.peaks, sample.name)
-            )
-            pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, sample.name, sample.name + "_model.pdf"), shell=True)
-        elif args.peak_caller == "spp":
-            # For point-source factors use default settings
-            # For broad factors use broad settings
-            cmd = tk.sppCallPeaks(
-                treatmentBam=sample.nodups,
-                controlBam=sample.ctrl.nodups,
-                treatmentName=sample.name,
-                controlName=sample.ctrl.sampleName,
-                outputDir=os.path.join(sample.dirs.peaks, sample.name),
-                broad=True if sample.broad else False,
-                cpus=args.cpus
-            )
-            pipe.call_lock(cmd, sample.peaks, shell=True)
-        elif args.peak_caller == "zinba":
-            raise NotImplementedError("Calling peaks with Zinba is not yet implemented.")
-            # cmd = tk.bamToBed(
-            #     inputBam=sample.nodups,
-            #     outputBed=os.path.join(sample.dirs.peaks, sample.name + ".bed"),
-            # )
-            # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, sample.name + ".bed"), shell=True)
-            # cmd = tk.bamToBed(
-            #     inputBam=sample.ctrl.nodups,
-            #     outputBed=os.path.join(sample.dirs.peaks, control.sampleName + ".bed"),
-            # )
-            # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, control.sampleName + ".bed"), shell=True)
-            # cmd = tk.zinbaCallPeaks(
-            #     treatmentBed=os.path.join(sample.dirs.peaks, sample.name + ".bed"),
-            #     controlBed=os.path.join(sample.dirs.peaks, control.sampleName + ".bed"),
-            #     tagmented=sample.tagmented,
-            #     cpus=args.cpus
-            # )
-            # pipe.call_lock(cmd, shell=True)
+        # For point-source factors use default settings
+        # For broad factors use broad settings
+        cmd = tk.macs2CallPeaks(
+            treatmentBam=sample.nodups,
+            controlBam=sample.ctrl.nodups,
+            outputDir=sample.dirs.peaks,
+            sampleName=sample.name,
+            genome=sample.genome,
+            broad=True if sample.broad else False
+        )
+        pipe.call_lock(cmd, sample.peaks, shell=True)
 
-        # Find motifs
-        pipe.timestamp("Finding motifs")
-        if not sample.histone:
-            # For TFs, find the "self" motif
-            cmd = tk.homerFindMotifs(
-                peakFile=sample.peaks,
-                genome=sample.genome,
-                outputDir=sample.motifsDir,
-                size="50",
-                length="8,10,12,14,16",
-                n_motifs=8
-            )
-            pipe.call_lock(cmd, os.path.join(sample.motifsDir, "homerResults", "motif1.motif"), shell=True)
-            # For TFs, find co-binding motifs (broader region)
-            cmd = tk.homerFindMotifs(
-                peakFile=sample.peaks,
-                genome=sample.genome,
-                outputDir=sample.motifsDir + "_cobinders",
-                size="200",
-                length="8,10,12,14,16",
-                n_motifs=12
-            )
-            pipe.call_lock(cmd, os.path.join(sample.motifsDir + "_cobinders", "homerResults", "motif1.motif"), shell=True)
-        else:
-            # For histones, use a broader region to find motifs
-            cmd = tk.homerFindMotifs(
-                peakFile=sample.peaks,
-                genome=sample.genome,
-                outputDir=sample.motifsDir,
-                size="1000",
-                length="8,10,12,14,16",
-                n_motifs=20
-            )
-            pipe.call_lock(cmd, os.path.join(sample.motifsDir, "homerResults", "motif1.motif"), shell=True)
+        pipe.timestamp("Ploting MACS2 model")
+        cmd = tk.macs2PlotModel(
+            sampleName=sample.name,
+            outputDir=os.path.join(sample.dirs.peaks, sample.name)
+        )
+        pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, sample.name, sample.name + "_model.pdf"), shell=True)
+    elif args.peak_caller == "spp":
+        pipe.timestamp("Calling peaks with spp")
+        # For point-source factors use default settings
+        # For broad factors use broad settings
+        cmd = tk.sppCallPeaks(
+            treatmentBam=sample.nodups,
+            controlBam=sample.ctrl.nodups,
+            treatmentName=sample.name,
+            controlName=sample.ctrl.sampleName,
+            outputDir=os.path.join(sample.dirs.peaks, sample.name),
+            broad=True if sample.broad else False,
+            cpus=args.cpus
+        )
+        pipe.call_lock(cmd, sample.peaks, shell=True)
+    elif args.peak_caller == "zinba":
+        raise NotImplementedError("Calling peaks with Zinba is not yet implemented.")
+        # pipe.timestamp("Calling peaks with Zinba")
+        # cmd = tk.bamToBed(
+        #     inputBam=sample.nodups,
+        #     outputBed=os.path.join(sample.dirs.peaks, sample.name + ".bed"),
+        # )
+        # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, sample.name + ".bed"), shell=True)
+        # cmd = tk.bamToBed(
+        #     inputBam=sample.ctrl.nodups,
+        #     outputBed=os.path.join(sample.dirs.peaks, control.sampleName + ".bed"),
+        # )
+        # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, control.sampleName + ".bed"), shell=True)
+        # cmd = tk.zinbaCallPeaks(
+        #     treatmentBed=os.path.join(sample.dirs.peaks, sample.name + ".bed"),
+        #     controlBed=os.path.join(sample.dirs.peaks, control.sampleName + ".bed"),
+        #     tagmented=sample.tagmented,
+        #     cpus=args.cpus
+        # )
+        # pipe.call_lock(cmd, shell=True)
 
-        # Center peaks on motifs
-        # TODO:
-        # right now this assumes peaks were called with MACS2
-        # figure a way of magetting the peak files withough using the peak_caller option
-        # for that would imply taht option would be required when selecting this stage
-        cmd = tk.centerPeaksOnMotifs(
+    # Find motifs
+    pipe.timestamp("Finding motifs")
+    if not sample.histone:
+        # For TFs, find the "self" motif
+        cmd = tk.homerFindMotifs(
             peakFile=sample.peaks,
             genome=sample.genome,
-            windowWidth=prj.config["options"]["peakwindowwidth"],
-            motifFile=os.path.join(sample.motifsDir, "homerResults", "motif1.motif"),
-            outputBed=sample.peaksMotifCentered
+            outputDir=sample.motifsDir,
+            size="50",
+            length="8,10,12,14,16",
+            n_motifs=8
         )
-        pipe.call_lock(cmd, sample.peaksMotifCentered, shell=True)
-
-        # Annotate peaks with motif info
-        pipe.timestamp("Annotating peaks with motif info")
-        # TODO:
-        # right now this assumes peaks were called with MACS2
-        # figure a way of getting the peak files withough using the peak_caller option
-        # for that would imply taht option would be required when selecting this stage
-        cmd = tk.AnnotatePeaks(
+        pipe.call_lock(cmd, os.path.join(sample.motifsDir, "homerResults", "motif1.motif"), shell=True)
+        # For TFs, find co-binding motifs (broader region)
+        cmd = tk.homerFindMotifs(
             peakFile=sample.peaks,
             genome=sample.genome,
-            motifFile=os.path.join(sample.motifsDir, "homerResults", "motif1.motif"),
-            outputBed=sample.peaksMotifAnnotated
+            outputDir=sample.motifsDir + "_cobinders",
+            size="200",
+            length="8,10,12,14,16",
+            n_motifs=12
         )
-        pipe.call_lock(cmd, sample.peaksMotifAnnotated, shell=True)
-
-        # Plot enrichment at peaks centered on motifs
-        pipe.timestamp("Ploting enrichment at peaks centered on motifs")
-        cmd = tk.peakAnalysis(
-            inputBam=sample.nodups,
-            peakFile=sample.peaksMotifCentered,
-            plotsDir=os.path.join(prj.dirs.results, 'plots'),
-            windowWidth=prj.config["options"]["peakwindowwidth"],
-            fragmentsize=1 if sample.tagmented else sample.readLength,
+        pipe.call_lock(cmd, os.path.join(sample.motifsDir + "_cobinders", "homerResults", "motif1.motif"), shell=True)
+    else:
+        # For histones, use a broader region to find motifs
+        cmd = tk.homerFindMotifs(
+            peakFile=sample.peaks,
             genome=sample.genome,
-            n_clusters=5,
-            strand_specific=True,
-            duplicates=True
+            outputDir=sample.motifsDir,
+            size="1000",
+            length="8,10,12,14,16",
+            n_motifs=20
         )
-        pipe.call_lock(cmd, shell=True)
+        pipe.call_lock(cmd, os.path.join(sample.motifsDir, "homerResults", "motif1.motif"), shell=True)
 
-        # Plot enrichment around TSSs
-        pipe.timestamp("Ploting enrichment around TSSs")
-        cmd = tk.tssAnalysis(
-            inputBam=sample.nodups,
-            tssFile=prj.config["annotations"]["tss"][sample.genome],
-            plotsDir=os.path.join(prj.dirs.results, 'plots'),
-            windowWidth=prj.config["options"]["peakwindowwidth"],
-            fragmentsize=1 if sample.tagmented else sample.readLength,
-            genome=sample.genome,
-            n_clusters=5,
-            strand_specific=True,
-            duplicates=True
-        )
-        pipe.call_lock(cmd, shell=True)
+    # Center peaks on motifs
+    pipe.timestamp("Centering peak in motifs")
+    # TODO:
+    # right now this assumes peaks were called with MACS2
+    # figure a way of magetting the peak files withough using the peak_caller option
+    # for that would imply taht option would be required when selecting this stage
+    cmd = tk.centerPeaksOnMotifs(
+        peakFile=sample.peaks,
+        genome=sample.genome,
+        windowWidth=prj.config["options"]["peakwindowwidth"],
+        motifFile=os.path.join(sample.motifsDir, "homerResults", "motif1.motif"),
+        outputBed=sample.peaksMotifCentered
+    )
+    pipe.call_lock(cmd, sample.peaksMotifCentered, shell=True)
 
-        # Calculate fraction of reads in peaks (FRiP)
-        pipe.timestamp("Calculating fraction of reads in peaks (FRiP)")
-        cmd = tk.calculateFRiP(
-            inputBam=sample.nodups,
-            inputBed=sample.peaks,
-            output=sample.frip
-        )
-        pipe.call_lock(cmd, sample.frip, shell=True)
+    # Annotate peaks with motif info
+    pipe.timestamp("Annotating peaks with motif info")
+    # TODO:
+    # right now this assumes peaks were called with MACS2
+    # figure a way of getting the peak files withough using the peak_caller option
+    # for that would imply taht option would be required when selecting this stage
+    cmd = tk.AnnotatePeaks(
+        peakFile=sample.peaks,
+        genome=sample.genome,
+        motifFile=os.path.join(sample.motifsDir, "homerResults", "motif1.motif"),
+        outputBed=sample.peaksMotifAnnotated
+    )
+    pipe.call_lock(cmd, sample.peaksMotifAnnotated, shell=True)
+
+    # Plot enrichment at peaks centered on motifs
+    pipe.timestamp("Ploting enrichment at peaks centered on motifs")
+    cmd = tk.peakAnalysis(
+        inputBam=sample.nodups,
+        peakFile=sample.peaksMotifCentered,
+        plotsDir=os.path.join(prj.dirs.results, 'plots'),
+        windowWidth=prj.config["options"]["peakwindowwidth"],
+        fragmentsize=1 if sample.tagmented else sample.readLength,
+        genome=sample.genome,
+        n_clusters=5,
+        strand_specific=True,
+        duplicates=True
+    )
+    pipe.call_lock(cmd, shell=True)
+
+    # Plot enrichment around TSSs
+    pipe.timestamp("Ploting enrichment around TSSs")
+    cmd = tk.tssAnalysis(
+        inputBam=sample.nodups,
+        tssFile=prj.config["annotations"]["tss"][sample.genome],
+        plotsDir=os.path.join(prj.dirs.results, 'plots'),
+        windowWidth=prj.config["options"]["peakwindowwidth"],
+        fragmentsize=1 if sample.tagmented else sample.readLength,
+        genome=sample.genome,
+        n_clusters=5,
+        strand_specific=True,
+        duplicates=True
+    )
+    pipe.call_lock(cmd, shell=True)
+
+    # Calculate fraction of reads in peaks (FRiP)
+    pipe.timestamp("Calculating fraction of reads in peaks (FRiP)")
+    cmd = tk.calculateFRiP(
+        inputBam=sample.nodups,
+        inputBed=sample.peaks,
+        output=sample.frip
+    )
+    pipe.call_lock(cmd, sample.frip, shell=True)
 
     print("Finished processing sample %s." % sample.name)
 

@@ -116,7 +116,7 @@ def sampleLoop(args, prj):
     :type prj: pipelines.Project
     """
 
-    print("Starting sample preprocessing.")
+    print("Starting sample preprocessing into jobs.")
 
     # start pipeline
     runName = "_".join([prj.name, time.strftime("%Y%m%d-%H%M%S")])

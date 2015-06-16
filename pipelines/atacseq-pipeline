@@ -249,6 +249,7 @@ def process(args, prj, sample):
         genome=sample.genome
     )
 
+    # Count coverage genome-wide
     pipe.timestamp("Calculating genome-wide coverage")
     cmd = tk.genomeWideCoverage(
         inputBam=sample.nodups,
@@ -257,59 +258,47 @@ def process(args, prj, sample):
     )
     pipe.call_lock(cmd, sample.coverage, shell=True)
 
-    # Assess NSC, RSC
+    # Calculate NSC, RSC
+    pipe.timestamp("Assessing signal/noise in sample")
     cmd = tk.peakTools(
         inputBam=sample.nodups,
-        output=os.path.join(prj.dirs.qc, "sample_QC.tsv"),
-        plot=os.path.join(prj.dirs.qc, sample.name + "_QC.pdf"),
+        output=sample.qc,
+        plot=sample.qcPlot,
         cpus=args.cpus
     )
-    pipe.call_lock(cmd, os.path.join(prj.dirs.qc, "sample_QC.tsv"), shell=True)
+    pipe.call_lock(cmd, sample.qcPlot, shell=True)
 
     # Call peaks
-    if args.peak_caller == "macs2":
-        # make dir for output
-        if not os.path.exists(os.path.join(sample.dirs.peaks, sample.name)):
-            os.makedirs(os.path.join(sample.dirs.peaks, sample.name))
+    pipe.timestamp("Calling peaks with MACS2")
+    # make dir for output (macs fails if it does not exist)
+    if not os.path.exists(sample.dirs.peaks):
+        os.makedirs(sample.dirs.peaks)
 
-        cmd = tk.macs2CallPeaks(
-            treatmentBam=sample.nodups,
-            controlBam=sample.ctrl.nodups,
-            outputDir=os.path.join(sample.dirs.peaks, sample.name),
-            sampleName=sample.name,
-            genome=sample.genome,
-            broad=True if sample.broad else False
-        )
-        pipe.call_lock(cmd, sample.peaks, shell=True)
-
-        cmd = tk.macs2PlotModel(
-            sampleName=sample.name,
-            outputDir=os.path.join(sample.dirs.peaks, sample.name)
-        )
-        pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, sample.name, sample.name + "_model.pdf"), shell=True)
-    elif args.peak_caller == "zinba":
-        raise NotImplementedError("Calling peaks with Zinba is not yet implemented.")
-        # cmd = tk.bamToBed(
-        #     inputBam=sample.nodups,
-        #     outputBed=os.path.join(sample.dirs.peaks, sample.name + ".bed"),
-        # )
-        # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, sample.name + ".bed"), shell=True)
-        # cmd = tk.bamToBed(
-        #     inputBam=ctrl.nodups,
-        #     outputBed=os.path.join(sample.dirs.peaks, control.sampleName + ".bed"),
-        # )
-        # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, control.sampleName + ".bed"), shell=True)
-        # cmd = tk.zinbaCallPeaks(
-        #     treatmentBed=os.path.join(sample.dirs.peaks, sample.name + ".bed"),
-        #     controlBed=os.path.join(sample.dirs.peaks, control.sampleName + ".bed"),
-        #     tagmented=sample.tagmented,
-        #     cpus=args.cpus
-        # )
-        # pipe.call_lock(cmd, shell=True)
+    cmd = tk.macs2CallPeaks(
+        treatmentBam=sample.nodups,
+        outputDir=sample.dirs.peaks,
+        sampleName=sample.name,
+        genome=sample.genome,
+        broad=True
+    )
+    pipe.call_lock(cmd, sample.peaks, shell=True)
 
     # Filter peaks based on mappability regions
-    # raise NotImplementedError("Filtering peaks is not yet implemented.")
-    # TODO
+    cmd = tk.filterPeaksMappability(
+        peaks=sample.peaks,
+        alignability=prj.config["annotations"]["alignability"][sample.genome][sample.readLength],
+        filteredPeaks=sample.filteredPeaks
+    )
+    pipe.call_lock(cmd, sample.filteredPeaks, shell=True)
+
+    # Calculate fraction of reads in peaks (FRiP)
+    pipe.timestamp("Calculating fraction of reads in peaks (FRiP)")
+    cmd = tk.calculateFRiP(
+        inputBam=sample.nodups,
+        inputBed=sample.filteredPeaks,
+        output=sample.frip
+    )
+    pipe.call_lock(cmd, sample.frip, shell=True)
 
     print("Finished processing sample %s." % sample.name)
 

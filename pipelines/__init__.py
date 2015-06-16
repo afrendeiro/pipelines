@@ -705,6 +705,34 @@ class ATACseqSample(ChIPseqSample):
     def __repr__(self):
         return "ATAC-seq sample '%s'" % self.name
 
+    def setFilePaths(self):
+        """
+        Sets the paths of all files for this sample.
+        """
+        # Inherit paths from Sample by running Sample's setFilePaths()
+        super(ChIPseqSample, self).setFilePaths()
+
+        # Files in the root of the sample dir
+        self.frip = _os.path.join(self.dirs.sampleRoot, self.name + "_FRiP.txt")
+
+        # Mapped: mapped, duplicates marked, removed, reads shifted
+        # this will create additional bam files with reads shifted
+        if self.tagmented:
+            self.dupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.shifted.bam")
+            self.nodupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.shifted.bam")
+
+        # Coverage: read coverage in windows genome-wide
+        self.dirs.coverage = _os.path.join(self.dirs.sampleRoot, "coverage")
+        self.coverage = _os.path.join(self.dirs.coverage, self.name + ".cov")
+
+        self.qc = _os.path.join(self.dirs.sampleRoot, self.name + "_QC.tsv")
+        self.qcPlot = _os.path.join(self.dirs.sampleRoot, self.name + "_QC.pdf")
+
+        # Peaks: peaks called and derivate files
+        self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks")
+        self.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks" + (".narrowPeak" if not self.broad else ".broadPeak"))
+        self.filteredPeaks = _os.path.join(self.dirs.peaks, self.name + "_peaks.filtered.bed")
+
 
 class QuantseqSample(Sample):
     """
@@ -751,7 +779,7 @@ class QuantseqSample(Sample):
         self.erccDups = _os.path.join(self.dirs.mapped, self.name + "_ercc.dups.bam")
         self.erccNodups = _os.path.join(self.dirs.mapped, self.name + "_ercc.nodups.bam")
         # kallisto pseudoalignments
-        self.pseudomapped = _os.path.join(self.dirs.mapped, self.name + ".pseudoalignment.bam"),
+        self.pseudomapped = _os.path.join(self.dirs.mapped, self.name + ".pseudoalignment.bam")
 
         # RNA quantification
         self.dirs.quant = _os.path.join(self.dirs.sampleRoot, "quantification")

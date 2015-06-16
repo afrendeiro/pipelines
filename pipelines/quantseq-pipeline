@@ -196,12 +196,12 @@ def process(args, prj, sample):
         inputBam=sample.nodups,
         outputBam=sample.nodups
     )
-    pipe.call_lock(cmd, "sample.nodups", shell=True)
+    pipe.call_lock(cmd, lock_name="sample.nodups", shell=True)
     cmd = tk.sortIndexBam(
         inputBam=sample.erccNodups,
         outputBam=sample.erccNodups
     )
-    pipe.call_lock(cmd, "sample.erccNodups", shell=True)
+    pipe.call_lock(cmd, lock_name="sample.erccNodups", shell=True)
 
     # Quantify Transcripts
     # With HTseq-count from alignments
@@ -231,6 +231,7 @@ def process(args, prj, sample):
         transcriptomeIndex=prj.config["annotations"]["kallistoindex"][sample.genome],
         cpus=args.cpus
     )
+    pipe.call_lock(cmd, sample.kallistoQuant, shell=True)
 
     print("Finished processing sample %s." % sample.name)
 

@@ -398,6 +398,8 @@ def filterPeaksMappability(peaks, alignability, filteredPeaks):
     cmd = "bedtools intersect -wa -u -f 1"
     cmd += " -a {0} -b {1} > {2} ".format(peaks, alignability, filteredPeaks)
 
+    return cmd
+
 
 def homerFindMotifs(peakFile, genome, outputDir, size=150, length="8,10,12,14,16", n_motifs=12):
 

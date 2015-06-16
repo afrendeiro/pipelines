@@ -425,17 +425,13 @@ class Sample(object):
 
         # check if sample is to be analysed with cuts
         cuts = self.config["techniques"]["atacseq"] + self.config["techniques"]["cm"]
-        self.tagmented = True if self.technique in cuts else False
+        self.tagmented = True if self.technique.upper() in cuts else False
 
         # Get track colour
         self.getTrackColour()
 
         # Get read type
         self.getReadType()
-
-        # Get type of factor
-        self.broad = True if self.technique in self.config["broadfactors"] else False
-        self.histone = True if self.technique in self.config["histones"] else False
 
         # Sample dirs
         self.dirs = Paths()
@@ -616,6 +612,10 @@ class ChIPseqSample(Sample):
             raise TypeError("Provided object is not a pandas Series.")
         super(ChIPseqSample, self).__init__(series)
 
+        # Get type of factor
+        self.broad = True if self.technique in self.config["broadfactors"] else False
+        self.histone = True if self.technique in self.config["histones"] else False
+
     def __repr__(self):
         return "ChIP-seq sample '%s'" % self.name
 
@@ -729,8 +729,8 @@ class ATACseqSample(ChIPseqSample):
         self.qcPlot = _os.path.join(self.dirs.sampleRoot, self.name + "_QC.pdf")
 
         # Peaks: peaks called and derivate files
-        self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks")
-        self.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks" + (".narrowPeak" if not self.broad else ".broadPeak"))
+        self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, "peaks")
+        self.peaks = _os.path.join(self.dirs.peaks, self.name + "_peaks.broadPeak")
         self.filteredPeaks = _os.path.join(self.dirs.peaks, self.name + "_peaks.filtered.bed")
 
 

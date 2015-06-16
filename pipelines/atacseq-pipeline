@@ -201,7 +201,7 @@ def process(args, prj, sample):
 
     # Shift reads
     if sample.tagmented:
-    pipe.timestamp("Shifting reads of tagmented sample")
+        pipe.timestamp("Shifting reads of tagmented sample")
         cmd = tk.shiftReads(
             inputBam=sample.dups,
             genome=sample.genome,
@@ -284,6 +284,7 @@ def process(args, prj, sample):
     pipe.call_lock(cmd, sample.peaks, shell=True)
 
     # Filter peaks based on mappability regions
+    pipe.timestamp("Filtering peaks in low mappability regions")
     cmd = tk.filterPeaksMappability(
         peaks=sample.peaks,
         alignability=prj.config["annotations"]["alignability"][sample.genome][sample.readLength],

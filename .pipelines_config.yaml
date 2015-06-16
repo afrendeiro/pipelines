@@ -43,9 +43,9 @@ annotations:
         hg19: /fhgfs/groups/lab_bock/arendeiro/share/hg19.chrom.sizes
         mm10: /fhgfs/groups/lab_bock/arendeiro/share/mm10.chrom.sizes
     kallistoindex:
-        hg38: /fhgfs/groups/lab_bock/arendeiro/share/kallisto/Homo_sapiens.GRCh38.rel79.cdna.all.ERCC.idx
-        hg19: /fhgfs/groups/lab_bock/arendeiro/share/kallisto/Homo_sapiens.GRCh38.rel79.cdna.all.ERCC.idx
-        dr7: /fhgfs/groups/lab_bock/arendeiro/share/kallisto/Danio_rerio.Zv9.rel79.cdna.all.ERCC.idx
+        hg38: /home/arendeiro/kallisto/Homo_sapiens.GRCh38.rel79.cdna.all.ERCC_nopolyA.idx
+        hg19: /home/arendeiro/kallisto/Homo_sapiens.GRCh37.75.cdna.all.ERCC_nopolyA.idx
+        dr7: /home/arendeiro/kallisto/Danio_rerio.Zv9.rel79.cdna.all.ERCC.idx
     genomewindows:
         hg19: /fhgfs/groups/lab_bock/arendeiro/share/hg19.genomeWindows_1kb.bed
         mm10: /fhgfs/groups/lab_bock/arendeiro/share/mm10.genomeWindows_1kb.bed

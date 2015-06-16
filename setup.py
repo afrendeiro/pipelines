@@ -20,6 +20,7 @@ setup(
     scripts=[
         "pipelines/ngsProject",
         "pipelines/chipseq-pipeline",
+        "pipelines/atacseq-pipeline",
         "pipelines/quantseq-pipeline",
         "lib/shift_reads.py",
         "lib/fix_bedfile_genome_boundaries.py",

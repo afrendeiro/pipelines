@@ -200,8 +200,8 @@ def process(args, prj, sample):
     pipe.call_lock(cmd, sample.nodups, shell=True)
 
     # Shift reads
-    pipe.timestamp("Shifting reads of tagmented sample")
     if sample.tagmented:
+    pipe.timestamp("Shifting reads of tagmented sample")
         cmd = tk.shiftReads(
             inputBam=sample.dups,
             genome=sample.genome,

@@ -337,11 +337,14 @@ def calculateFRiP(inputBam, inputBed, output):
 
 
 def macs2CallPeaks(treatmentBam, outputDir, sampleName, genome, controlBam=None, broad=False):
+
+    sizes = {"hg38": 2.7e9, "hg19": 2.7e9, "mm10": 1.87e9, "dr7": 1.412e9}
+
     if not broad:
         cmd = "macs2 callpeak -t {0}".format(treatmentBam)
         if controlBam is not None:
             cmd += " -c {0}".format(controlBam)
-        cmd += " --bw 200 -g {0} -n {0} --outdir {0}".format(genome, sampleName, outputDir)
+        cmd += " --bw 200 -g {0} -n {0} --outdir {0}".format(sizes[genome], sampleName, outputDir)
         # --fix-bimodal --extsize 180
     else:
         # Parameter setting for broad factors according to Nature Protocols (2012)
@@ -350,7 +353,7 @@ def macs2CallPeaks(treatmentBam, outputDir, sampleName, genome, controlBam=None,
         if controlBam is not None:
             cmd += " -c {0}".format(controlBam)
         cmd += " --broad --nomodel --extsize 73 --pvalue 1e-3 -g {0} -n {1} --outdir {2}".format(
-            genome, sampleName, outputDir
+            sizes[genome], sampleName, outputDir
         )
 
     return cmd
@@ -389,6 +392,11 @@ def zinbaCallPeaks(treatmentBed, controlBed, cpus, tagmented=False):
     cmd = "Rscript `which zinba.R` -l {0} -t {1} -c {2}".format(fragmentLength, treatmentBed, controlBed)
 
     return cmd
+
+
+def filterPeaksMappability(peaks, alignability, filteredPeaks):
+    cmd = "bedtools intersect -wa -u -f 1"
+    cmd += " -a {0} -b {1} > {2} ".format(peaks, alignability, filteredPeaks)
 
 
 def homerFindMotifs(peakFile, genome, outputDir, size=150, length="8,10,12,14,16", n_motifs=12):

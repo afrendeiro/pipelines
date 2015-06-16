@@ -256,21 +256,6 @@ class SampleSheet(object):
         else:
             return "SampleSheet with %i samples." % len(self.df)
 
-    def asDataFrame(self, all=True):
-        """
-        Returns a `pandas.DataFrame` representation of self.
-        """
-        df = _pd.DataFrame([s.asSeries() for s in self.samples])
-
-        # Filter some columns out
-        if not all:
-            columns = self.df.columns.tolist()
-            if hasattr(df, "unmapped"):
-                columns[columns.index("unmappedBam")] = "unmapped"
-            df = df[["sampleName"] + columns + ["mapped"]]
-
-        return df
-
     def checkSheet(self):
         """
         Check if csv file exists and has all required columns.
@@ -364,6 +349,21 @@ class SampleSheet(object):
                     # append merged biological replicate to samples
                     self.samples.append(self.makeSample(rep))
 
+    def asDataFrame(self, all=True):
+        """
+        Returns a `pandas.DataFrame` representation of self.
+        """
+        df = _pd.DataFrame([s.asSeries() for s in self.samples])
+
+        # Filter some columns out
+        if not all:
+            columns = self.df.columns.tolist()
+            if hasattr(df, "unmapped"):
+                columns[columns.index("unmappedBam")] = "unmapped"
+            df = df[["sampleName"] + columns + ["mapped"]]
+
+        return df
+
     def to_csv(self, path, all=False):
         """
         Saves a csv annotation sheet from the samples.
@@ -424,7 +424,7 @@ class Sample(object):
             self.config = _yaml.load(handle)
 
         # check if sample is to be analysed with cuts
-        cuts = self.config["techniques"]["cm"] + self.config["techniques"]["dnase"] + self.config["techniques"]["atacseq"]
+        cuts = self.config["techniques"]["atacseq"] + self.config["techniques"]["cm"]
         self.tagmented = True if self.technique in cuts else False
 
         # Get track colour

@@ -27,6 +27,8 @@ def main():
     parser = ArgumentParser(description="Quant-seq pipeline.")
     parser = mainArgParser(parser)
     args = parser.parse_args()
+    # save pickle
+    samplePickle = args.samplePickle
 
     # Read in objects
     prj, sample, args = pickle.load(open(args.samplePickle, "rb"))
@@ -36,7 +38,7 @@ def main():
 
     # Remove pickle
     if not args.dry_run:
-        os.system("rm %s" % args.samplePickle)
+        os.system("rm %s" % samplePickle)
 
     # Exit
     print("Finished and exiting.")

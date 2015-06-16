@@ -25,11 +25,9 @@ __status__ = "Development"
 def main():
     # Parse command-line arguments
     parser = ArgumentParser(description="ATAC-seq pipeline.")
-
     parser = mainArgParser(parser)
-
-    # Parse
     args = parser.parse_args()
+    # save pickle
     samplePickle = args.samplePickle
 
     # Read in objects

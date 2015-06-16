@@ -205,7 +205,7 @@ def shiftReads(inputBam, genome, outputBam):
 def sortIndexBam(inputBam, outputBam):
     import re
 
-    tmpBam = re.sub("\.bam", "", inputBam)
+    tmpBam = re.sub("\.bam", ".sorted", inputBam)
 
     cmd1 = "samtools sort {0} {1}".format(inputBam, tmpBam)
 

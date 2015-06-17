@@ -272,7 +272,7 @@ def process(args, prj, sample):
     # If sample does not have "ctrl" attribute, finish processing it.
     if not hasattr(sample, "ctrl"):
         print("Finished processing sample %s." % sample.name)
-        continue
+        return
 
     if args.peak_caller == "macs2":
         pipe.timestamp("Calling peaks with MACS2")

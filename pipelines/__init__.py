@@ -721,6 +721,7 @@ class ATACseqSample(ChIPseqSample):
         self.dirs.coverage = _os.path.join(self.dirs.sampleRoot, "coverage")
         self.coverage = _os.path.join(self.dirs.coverage, self.name + ".cov")
 
+        self.insertplot = _os.path.join(self.dirs.sampleRoot, self.name + "_insertLengths.pdf")
         self.qc = _os.path.join(self.dirs.sampleRoot, self.name + "_QC.tsv")
         self.qcPlot = _os.path.join(self.dirs.sampleRoot, self.name + "_QC.pdf")
 

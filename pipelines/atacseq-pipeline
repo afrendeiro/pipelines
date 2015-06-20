@@ -234,6 +234,13 @@ def process(args, prj, sample):
         genome=sample.genome
     )
 
+    # Plot fragment distribution
+    pipe.timestamp("Plotting insert size ditribution")
+    tk.plotInsertSizesFit(
+        bam=sample.filtered,
+        plot=sample.insertplot
+    )
+
     # Count coverage genome-wide
     pipe.timestamp("Calculating genome-wide coverage")
     cmd = tk.genomeWideCoverage(

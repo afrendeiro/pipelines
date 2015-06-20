@@ -182,55 +182,40 @@ def process(args, prj, sample):
     pipe.call_lock(cmd, sample.mapped, shell=True)
     pipe.clean_add(sample.mapped, conditional=True)
 
-    # Mark duplicates
-    pipe.timestamp("Marking duplicates with piccard")
-    cmd = tk.markDuplicates(
+    # Filter reads
+    pipe.timestamp("Filtering reads for quality")
+    cmd = tk.filterReads(
         inputBam=sample.mapped,
-        outputBam=sample.dups,
-        metricsFile=sample.dupsMetrics
+        outputBam=sample.filtered,
+        PE=sample.PE,
+        cpus=args.cpus,
+        Q=args.quality
     )
-    pipe.call_lock(cmd, sample.dups, shell=True)
-
-    # Remove duplicates
-    pipe.timestamp("Removing duplicates with sambamba")
-    cmd = tk.removeDuplicates(
-        inputBam=sample.dups,
-        outputBam=sample.nodups,
-        cpus=args.cpus
-    )
-    pipe.call_lock(cmd, sample.nodups, shell=True)
+    pipe.call_lock(cmd, sample.filtered, shell=True)
 
     # Shift reads
     if sample.tagmented:
         pipe.timestamp("Shifting reads of tagmented sample")
         cmd = tk.shiftReads(
-            inputBam=sample.dups,
+            inputBam=sample.filtered,
             genome=sample.genome,
-            outputBam=sample.dupsshifted
+            outputBam=sample.filteredshifted
         )
-        pipe.call_lock(cmd, sample.dupsshifted, shell=True)
-        cmd = tk.shiftReads(
-            inputBam=sample.nodups,
-            genome=sample.genome,
-            outputBam=sample.nodupsshifted
-        )
-        pipe.call_lock(cmd, sample.nodupsshifted, shell=True)
+        pipe.call_lock(cmd, sample.filteredshifted, shell=True)
 
     # Index bams
-    pipe.timestamp("Indexing bamfile with samtools")
-    for s in [sample.dups, sample.nodups]:
-        cmd = tk.indexBam(inputBam=s)
-        pipe.call_lock(cmd, s + ".bai", shell=True)
+    pipe.timestamp("Indexing bamfiles with samtools")
+    cmd = tk.indexBam(inputBam=sample.filtered)
+    pipe.call_lock(cmd, sample.filtered + ".bai", shell=True)
     if sample.tagmented:
-        for s in [sample.dupsshifted, sample.nodupsshifted]:
-            cmd = tk.indexBam(inputBam=s)
-            pipe.call_lock(cmd, s + ".bai", shell=True)
+        cmd = tk.indexBam(inputBam=sample.filteredshifted)
+        pipe.call_lock(cmd, sample.filteredshifted + ".bai", shell=True)
 
     # Make tracks
     # right now tracks are only made for bams without duplicates
     pipe.timestamp("Making bigWig tracks from bam file")
     cmd = tk.bamToBigWig(
-        inputBam=sample.nodups,
+        inputBam=sample.filtered,
         outputBigWig=sample.bigwig,
         genomeSizes=prj.config["annotations"]["chrsizes"][sample.genome],
         genome=sample.genome,
@@ -253,7 +238,7 @@ def process(args, prj, sample):
     # Count coverage genome-wide
     pipe.timestamp("Calculating genome-wide coverage")
     cmd = tk.genomeWideCoverage(
-        inputBam=sample.nodups,
+        inputBam=sample.filtered,
         genomeWindows=prj.config["annotations"]["genomewindows"][sample.genome],
         output=sample.coverage
     )
@@ -262,7 +247,7 @@ def process(args, prj, sample):
     # Calculate NSC, RSC
     pipe.timestamp("Assessing signal/noise in sample")
     cmd = tk.peakTools(
-        inputBam=sample.nodups,
+        inputBam=sample.filtered,
         output=sample.qc,
         plot=sample.qcPlot,
         cpus=args.cpus
@@ -283,8 +268,8 @@ def process(args, prj, sample):
         # For point-source factors use default settings
         # For broad factors use broad settings
         cmd = tk.macs2CallPeaks(
-            treatmentBam=sample.nodups,
-            controlBam=sample.ctrl.nodups,
+            treatmentBam=sample.filtered,
+            controlBam=sample.ctrl.filtered,
             outputDir=sample.dirs.peaks,
             sampleName=sample.name,
             genome=sample.genome,
@@ -303,8 +288,8 @@ def process(args, prj, sample):
         # For point-source factors use default settings
         # For broad factors use broad settings
         cmd = tk.sppCallPeaks(
-            treatmentBam=sample.nodups,
-            controlBam=sample.ctrl.nodups,
+            treatmentBam=sample.filtered,
+            controlBam=sample.ctrl.filtered,
             treatmentName=sample.name,
             controlName=sample.ctrl.sampleName,
             outputDir=os.path.join(sample.dirs.peaks, sample.name),
@@ -316,12 +301,12 @@ def process(args, prj, sample):
         raise NotImplementedError("Calling peaks with Zinba is not yet implemented.")
         # pipe.timestamp("Calling peaks with Zinba")
         # cmd = tk.bamToBed(
-        #     inputBam=sample.nodups,
+        #     inputBam=sample.filtered,
         #     outputBed=os.path.join(sample.dirs.peaks, sample.name + ".bed"),
         # )
         # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, sample.name + ".bed"), shell=True)
         # cmd = tk.bamToBed(
-        #     inputBam=sample.ctrl.nodups,
+        #     inputBam=sample.ctrl.filtered,
         #     outputBed=os.path.join(sample.dirs.peaks, control.sampleName + ".bed"),
         # )
         # pipe.call_lock(cmd, os.path.join(sample.dirs.peaks, control.sampleName + ".bed"), shell=True)
@@ -400,7 +385,7 @@ def process(args, prj, sample):
     # Plot enrichment at peaks centered on motifs
     pipe.timestamp("Ploting enrichment at peaks centered on motifs")
     cmd = tk.peakAnalysis(
-        inputBam=sample.nodups,
+        inputBam=sample.filtered,
         peakFile=sample.peaksMotifCentered,
         plotsDir=os.path.join(prj.dirs.results, 'plots'),
         windowWidth=prj.config["options"]["peakwindowwidth"],
@@ -415,7 +400,7 @@ def process(args, prj, sample):
     # Plot enrichment around TSSs
     pipe.timestamp("Ploting enrichment around TSSs")
     cmd = tk.tssAnalysis(
-        inputBam=sample.nodups,
+        inputBam=sample.filtered,
         tssFile=prj.config["annotations"]["tss"][sample.genome],
         plotsDir=os.path.join(prj.dirs.results, 'plots'),
         windowWidth=prj.config["options"]["peakwindowwidth"],
@@ -430,7 +415,7 @@ def process(args, prj, sample):
     # Calculate fraction of reads in peaks (FRiP)
     pipe.timestamp("Calculating fraction of reads in peaks (FRiP)")
     cmd = tk.calculateFRiP(
-        inputBam=sample.nodups,
+        inputBam=sample.filtered,
         inputBed=sample.peaks,
         output=sample.frip
     )

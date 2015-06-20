@@ -189,6 +189,32 @@ def removeDuplicates(inputBam, outputBam, cpus=16):
     return cmd
 
 
+def filterReads(inputBam, outputBam, PE=False, cpus=16, Q=30):
+    """
+    Remove duplicates, filter for >Q, remove multiple mapping reads.
+    For paired-end reads, keep only proper pairs.
+    """
+    import re
+
+    nodups = re.sub("\.bam$", "", outputBam) + ".nodups.nofilter.bam"
+
+    cmd1 = "sambamba markdup -t {0} -r --compression-level=0 {1} {2}".format(cpus, inputBam, nodups)
+
+    cmd2 = ' sambamba view -t {0} -f bam --valid'.format(cpus)
+    if PE:
+        cmd2 += ' -F "not (unmapped or mate_is_unmapped) and proper_pair'
+    else:
+        cmd2 += ' -F "not unmapped'
+    cmd2 += ' and not (secondary_alignment or supplementary) and mapping_quality >= {0}"'.format(Q)
+    cmd2 += ' {0} |'.format(nodups)
+    cmd2 += " sambamba sort -t {0} /dev/stdin -o {1}".format(cpus, outputBam)
+
+    cmd3 = "if [[ -s {0} ]]; then rm {0}; fi".format(nodups)
+    cmd4 = "if [[ -s {0} ]]; then rm {0}; fi".format(nodups + ".bai")
+
+    return [cmd1, cmd2, cmd3, cmd4]
+
+
 def shiftReads(inputBam, genome, outputBam):
     import re
 
@@ -237,6 +263,110 @@ def qc():
     -o $PROJECTDIR/mapped/$SAMPLE_NAME_qc_lc_extrap.txt
     """
     raise NotImplementedError("Function not implemented yet.")
+
+
+def getFragmentSizes(bam):
+    try:
+        import pysam
+        import numpy as np
+    except:
+        return
+
+    fragSizes = list()
+
+    bam = pysam.Samfile(bam, 'rb')
+
+    for read in bam:
+        if bam.getrname(read.tid) != "chrM" and read.tlen < 1500:
+            fragSizes.append(read.tlen)
+    bam.close()
+
+    return np.array(fragSizes)
+
+
+def plotInsertSizesFit(bam, plot):
+    """
+    From here:
+    https://github.com/dbrg77/ATAC/blob/master/ATAC_seq_read_length_curve_fitting.ipynb
+    """
+    try:
+        import pysam
+        import numpy as np
+        import matplotlib.mlab as mlab
+        from scipy.optimize import curve_fit
+        import matplotlib.pyplot as plt
+    except:
+        return
+
+    def getFragmentSizes(bam):
+        fragSizes = list()
+
+        bam = pysam.Samfile(bam, 'rb')
+
+        for read in bam:
+            if bam.getrname(read.tid) != "chrM" and read.tlen < 1500:
+                fragSizes.append(read.tlen)
+        bam.close()
+
+        return np.array(fragSizes)
+
+    def expo(x, q, r):
+        """
+        Exponential fuction.
+        """
+        return q * np.exp(-r * x)
+
+    def mixtureFunction(x, *p):
+        """
+        Mixture function with six gaussian (nucleosome reads) and one exponential function (nucleosome-free reads).
+        """
+        m1, s1, w1, m2, s2, w2, m3, s3, w3, m4, s4, w4, m5, s5, w5, m6, s6, w6, q, r = p
+        return (mlab.normpdf(x, m1, s1) * w1 +
+                mlab.normpdf(x, m2, s2) * w2 +
+                mlab.normpdf(x, m3, s3) * w3 +
+                mlab.normpdf(x, m4, s4) * w4 +
+                mlab.normpdf(x, m5, s5) * w5 +
+                mlab.normpdf(x, m6, s6) * w6 +
+                q * np.exp(-r * x))
+
+    # get fragment sizes
+    fragSizes = getFragmentSizes(bam)
+
+    # bin
+    numBins = np.linspace(0, 1500, 1501)
+    y, scatter_x = np.histogram(fragSizes, numBins, normed=1)
+    # get the mid-point of each bin
+    x = (scatter_x[:-1] + scatter_x[1:]) / 2
+
+    # Parameters are empirical, need to check
+    paramGuess = [200, 50, 0.7, 400, 50, 0.15, 600, 50, 0.1, 800, 55, 0.045, 1000, 60, 0.015, 1200, 60, 0.007, 0.03616429, 0.02297901]
+
+    popt3, pcov3 = curve_fit(mixtureFunction, x[51:], y[51:], p0=paramGuess, maxfev=100000)
+
+    m1, s1, w1, m2, s2, w2, m3, s3, w3, m4, s4, w4, m5, s5, w5, m6, s6, w6, q, r = popt3
+
+    # Plot
+    plt.figure(figsize=(12, 12))
+
+    # Plot distribution
+    plt.hist(fragSizes, numBins, histtype="step", ec="k", normed=1, alpha=0.5)
+
+    # Plot nucleosomal fits
+    plt.plot(x, mlab.normpdf(x, m1, s1) * w1, 'r-', lw=1.5, label="1st nucleosome")
+    plt.plot(x, mlab.normpdf(x, m2, s2) * w2, 'g-', lw=1.5, label="2nd nucleosome")
+    plt.plot(x, mlab.normpdf(x, m3, s3) * w3, 'b-', lw=1.5, label="3rd nucleosome")
+    plt.plot(x, mlab.normpdf(x, m4, s4) * w4, 'c-', lw=1.5, label="4th nucleosome")
+    plt.plot(x, mlab.normpdf(x, m5, s5) * w5, 'm-', lw=1.5, label="5th nucleosome")
+    plt.plot(x, mlab.normpdf(x, m6, s6) * w6, 'y-', lw=1.5, label="6th nucleosome")
+
+    # Plot nucleosome-free fit
+    plt.plot(x, expo(x, 6.93385577e-02, 3.34278108e-02), 'k-', lw=1.5, label="nucleosome-free")
+
+    # Plot sum of fits
+    ys = mixtureFunction(x, *popt3)
+    plt.plot(x, ys, 'k--', lw=3.5, label="fit sum")
+
+    plt.savefig(plot, bbox_inches="tight")
 
 
 def bamToBigWig(inputBam, outputBigWig, genomeSizes, genome, tagmented=False):

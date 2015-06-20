@@ -552,8 +552,7 @@ class Sample(object):
         # Mapped: mapped, duplicates marked, removed, reads shifted
         self.dirs.mapped = _os.path.join(self.dirs.sampleRoot, "mapped")
         self.mapped = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.bam")
-        self.dups = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.bam")
-        self.nodups = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.bam")
+        self.filtered = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.filtered.bam")
 
         # Project's public_html folder
         self.bigwig = _os.path.join(self.project.dirs.html, self.name + ".bigWig")
@@ -632,8 +631,7 @@ class ChIPseqSample(Sample):
         # Mapped: mapped, duplicates marked, removed, reads shifted
         # this will create additional bam files with reads shifted
         if self.tagmented:
-            self.dupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.shifted.bam")
-            self.nodupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.shifted.bam")
+            self.filteredshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.filtered.shifted.bam")
 
         # Coverage: read coverage in windows genome-wide
         self.dirs.coverage = _os.path.join(self.dirs.sampleRoot, "coverage")
@@ -717,9 +715,7 @@ class ATACseqSample(ChIPseqSample):
 
         # Mapped: mapped, duplicates marked, removed, reads shifted
         # this will create additional bam files with reads shifted
-        if self.tagmented:
-            self.dupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.shifted.bam")
-            self.nodupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.shifted.bam")
+        self.filteredshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.filtered.shifted.bam")
 
         # Coverage: read coverage in windows genome-wide
         self.dirs.coverage = _os.path.join(self.dirs.sampleRoot, "coverage")
@@ -772,8 +768,7 @@ class QuantseqSample(Sample):
         # Mapped: Tophat mapped, duplicates marked, removed
         self.dirs.mapped = _os.path.join(self.dirs.sampleRoot, "mapped")
         self.mapped = _os.path.join(self.dirs.mapped, "accepted_hits.bam")
-        self.dups = _os.path.join(self.dirs.mapped, "accepted_hits.dups.bam")
-        self.nodups = _os.path.join(self.dirs.mapped, "accepted_hits.nodups.bam")
+        self.filtered = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.filtered.bam")
         # ercc alignments
         self.erccMapped = _os.path.join(self.dirs.mapped, self.name + "_ercc.bam")
         self.erccDups = _os.path.join(self.dirs.mapped, self.name + "_ercc.dups.bam")

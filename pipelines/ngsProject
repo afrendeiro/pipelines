@@ -91,6 +91,10 @@ def addArgs(parser):
                         dest="maxinsert",
                         help="Maximum allowed insert size allowed for paired end mates. Default=2000.",
                         type=int)
+    parser.add_argument("-q", "--quality", default=30,
+                        dest="quality",
+                        help="Minimum read quality to keep. Default=30.",
+                        type=int)
 
     # Further downstream
     parser.add_argument("--window-size", default=1000, dest="windowsize",

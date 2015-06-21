@@ -186,7 +186,7 @@ def process(args, prj, sample):
     cmd = tk.filterReads(
         inputBam=sample.mapped,
         outputBam=sample.filtered,
-        PE=sample.PE,
+        PE=sample.paired,
         cpus=args.cpus,
         Q=args.quality
     )

@@ -205,7 +205,7 @@ def removeDuplicates(inputBam, outputBam, cpus=16):
     return cmd
 
 
-def filterReads(inputBam, outputBam, PE=False, cpus=16, Q=30):
+def filterReads(inputBam, outputBam, metricsFile, paired=False, cpus=16, Q=30):
     """
     Remove duplicates, filter for >Q, remove multiple mapping reads.
     For paired-end reads, keep only proper pairs.
@@ -214,10 +214,10 @@ def filterReads(inputBam, outputBam, PE=False, cpus=16, Q=30):
 
     nodups = re.sub("\.bam$", "", outputBam) + ".nodups.nofilter.bam"
 
-    cmd1 = "sambamba markdup -t {0} -r --compression-level=0 {1} {2}".format(cpus, inputBam, nodups)
+    cmd1 = "sambamba markdup -t {0} -r --compression-level=0 {1} {2} 2> {3}".format(cpus, inputBam, nodups, metricsFile)
 
     cmd2 = ' sambamba view -t {0} -f bam --valid'.format(cpus)
-    if PE:
+    if paired:
         cmd2 += ' -F "not (unmapped or mate_is_unmapped) and proper_pair'
     else:
         cmd2 += ' -F "not unmapped'

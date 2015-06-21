@@ -304,7 +304,7 @@ def plotInsertSizesFit(bam, plot):
         bam = pysam.Samfile(bam, 'rb')
 
         for read in bam:
-            if bam.getrname(read.tid) != "chrM" and read.tlen < 1500:
+            if read.tlen < 1500:
                 fragSizes.append(read.tlen)
         bam.close()
 

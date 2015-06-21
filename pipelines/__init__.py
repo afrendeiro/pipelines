@@ -179,9 +179,9 @@ class Project(object):
         self.sheet.makeSamples()
 
         # Generate sample objects if merging options are on:
-        if self.config["options"]["mergetechnical"]:
+        if self.config["options"]["mergetechnical"] and hasattr(self.sheet.df, "technicalReplicate"):
             self.sheet.getBiologicalReplicates()
-        if self.config["options"]["mergebiological"]:
+        if self.config["options"]["mergebiological"] and hasattr(self.sheet.df, "biologicalReplicate"):
             self.sheet.getMergedBiologicalReplicates()
 
         # Add samples to Project
@@ -265,7 +265,7 @@ class SampleSheet(object):
         except IOError("Given csv file couldn't be read.") as e:
             raise e
 
-        req = ["technique", "genome", "biologicalReplicate", "technicalReplicate", "unmappedBam"]
+        req = ["technique", "genome", "unmappedBam"]
         missing = [col for col in req if col not in self.df.columns]
 
         if len(missing) != 0:
@@ -446,7 +446,7 @@ class Sample(object):
         """
         Check if any of its important attributes is None.
         """
-        req = ["technique", "genome", "biologicalReplicate", "technicalReplicate", "unmappedBam"]
+        req = ["technique", "genome", "unmappedBam"]
 
         if not all([hasattr(self, attr) for attr in req]):
             raise ValueError("Required columns for sample do not exist.")
@@ -641,8 +641,8 @@ class ChIPseqSample(Sample):
         self.qcPlot = _os.path.join(self.dirs.sampleRoot, self.name + "_QC.pdf")
 
         # Peaks: peaks called and derivate files
-        self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks")
-        self.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks" + (".narrowPeak" if not self.broad else ".broadPeak"))
+        self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, "peaks")
+        self.peaks = _os.path.join(self.dirs.peaks, self.name + ("_peaks.narrowPeak" if not self.broad else "_peaks.broadPeak"))
         self.peaksMotifCentered = _os.path.join(self.dirs.peaks, self.name + "_peaks.motifCentered.bed")
         self.peaksMotifAnnotated = _os.path.join(self.dirs.peaks, self.name + "_peaks.motifAnnotated.bed")
 

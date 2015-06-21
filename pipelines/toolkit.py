@@ -115,21 +115,37 @@ def trimmomatic(inputFastq1, outputFastq1, cpus, adapters, log,
     return cmd
 
 
-def skewer(inputFastq1, outputPrefix, cpus, adapters, inputFastq2=None):
+def skewer(inputFastq1, outputPrefix, outputFastq1, trimLog, cpus, adapters, inputFastq2=None, outputFastq2=None):
 
     PE = False if inputFastq2 is None else True
     mode = "pe" if PE else "any"
 
-    cmd = "skewer --quiet"
-    cmd += " -t {0}".format(cpus)
-    cmd += " -m {0}".format(mode)
-    cmd += " -x {0}".format(adapters)
-    cmd += " -o {0}".format(outputPrefix)
-    cmd += " {0}".format(inputFastq1)
-    if inputFastq2 is not None:
-        cmd += " {0}".format(inputFastq2)
+    cmds = list()
 
-    return cmd
+    cmd1 = "skewer --quiet"
+    cmd1 += " -t {0}".format(cpus)
+    cmd1 += " -m {0}".format(mode)
+    cmd1 += " -x {0}".format(adapters)
+    cmd1 += " -o {0}".format(outputPrefix)
+    cmd1 += " {0}".format(inputFastq1)
+    if inputFastq2 is not None:
+        cmd1 += " {0}".format(inputFastq2)
+        cmds.append(cmd1)
+
+    if inputFastq2 is not None:
+        cmd2 = "mv {0} {1}".format(outputPrefix + "-trimmed-pair1.fastq", outputFastq1)
+        cmds.append(cmd2)
+
+        cmd3 = "mv {0} {1}".format(outputPrefix + "-trimmed-pair2.fastq", outputFastq2)
+        cmds.append(cmd3)
+    else:
+        cmd2 = "mv {0} {1}".format(outputPrefix + "-trimmed.fastq", outputFastq1)
+        cmds.append(cmd2)
+
+    cmd4 = "mv {0} {1}".format(outputPrefix + "-trimmed.log", trimLog)
+    cmds.append(cmd4)
+
+    return cmds
 
 
 def bowtie2Map(inputFastq1, outputBam, log, metrics, genomeIndex, maxInsert, cpus, inputFastq2=None):

@@ -558,7 +558,7 @@ class Sample(object):
         self.bigwig = _os.path.join(self.project.dirs.html, self.name + ".bigWig")
 
         # Track url
-        self.trackURL = self.config["url"] + self.name + ".bigWig"
+        self.trackURL = "/".join([self.config["url"], self.project.name, self.name + ".bigWig"])
 
     def makeSampleDirs(self):
         """

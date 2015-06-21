@@ -209,7 +209,7 @@ def process(args, prj, sample):
     )
     pipe.call_lock(cmd, lock_name=sample.name + "addToTrackHub", shell=True)
     tk.linkToTrackHub(
-        trackHubURL=os.path.join(prj.dirs.html, "trackHub_{0}.txt".format(sample.genome)),
+        trackHubURL="/".join([prj.config["url"], prj.name, "trackHub_{0}.txt".format(sample.genome)]),
         fileName=os.path.join(prj.dirs.root, "ucsc_tracks_{0}.html".format(sample.genome)),
         genome=sample.genome
     )

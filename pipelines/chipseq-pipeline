@@ -68,7 +68,7 @@ def process(args, prj, sample):
     print("Start processing ChIP-seq sample %s." % sample.name)
 
     # Start Pypiper object
-    pipe = Pypiper("pipe", sample.dirs.sampleRoot)
+    pipe = Pypiper("pipe", sample.dirs.sampleRoot, overwrite_locks=args.overwrite)
 
     # Merge Bam files if more than one technical replicate
     if type(sample.unmappedBam) == list:

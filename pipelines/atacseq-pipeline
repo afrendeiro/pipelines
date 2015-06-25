@@ -69,7 +69,7 @@ def process(args, prj, sample):
     print("Start processing ATAC-seq sample %s." % sample.name)
 
     # Start Pypiper object
-    pipe = Pypiper("pipe", sample.dirs.sampleRoot, overwrite_locks=args.overwrite)
+    pipe = Pypiper("pipe", sample.dirs.sampleRoot, args=args)
 
     # if more than one technical replicate, merge bams
     if type(sample.unmappedBam) == list:

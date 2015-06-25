@@ -70,8 +70,14 @@ def addArgs(parser):
                         help="Dry run. Assemble commands, but do not submit jobs to slurm. Default=False.")
     parser.add_argument("--no-checks", dest="checks", action="store_false",
                         help="Don't check file existence and integrity. Default=False.")
-    parser.add_argument("--overwrite", dest="overwrite", action="store_true",
+
+    # Pypiper
+    parser.add_argument("--overwrite", dest="recover", action="store_true",
                         help="Overwrite existing files. Default=False.")
+    parser.add_argument("--fresh-start", dest="fresh", action="store_true",
+                        help="Start from beginning of pipeline. Default=False.")
+    parser.add_argument("--manual-clean", dest="manual_clean", action="store_true",
+                        help="Manually clean temporary files. Default=False.")
 
     # Slurm-related
     parser.add_argument("-c", "--cpus", default=4, dest="cpus",

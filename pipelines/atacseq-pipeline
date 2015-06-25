@@ -7,7 +7,7 @@ ATAC-seq pipeline
 from argparse import ArgumentParser
 import os
 import sys
-from pipelines import toolkit as tk
+from pypiper import ngstk as tk
 import cPickle as pickle
 from pypiper import Pypiper
 
@@ -83,7 +83,7 @@ def process(args, prj, sample):
 
     # Fastqc
     pipe.timestamp("Measuring sample quality with Fastqc")
-    cmd = tk.fastqc(
+    cmd = tk.fastQC(
         inputBam=sample.unmappedBam,
         outputDir=sample.dirs.sampleRoot,
         sampleName=sample.name
@@ -186,6 +186,8 @@ def process(args, prj, sample):
 
     # Index bams
     pipe.timestamp("Indexing bamfiles with samtools")
+    cmd = tk.indexBam(inputBam=sample.mapped)
+    pipe.call_lock(cmd, sample.mapped + ".bai", shell=True)
     cmd = tk.indexBam(inputBam=sample.filtered)
     pipe.call_lock(cmd, sample.filtered + ".bai", shell=True)
     if sample.tagmented:
@@ -240,7 +242,7 @@ def process(args, prj, sample):
         plot=sample.qcPlot,
         cpus=args.cpus
     )
-    pipe.call_lock(cmd, sample.qcPlot, shell=True)
+    pipe.call_lock(cmd, sample.qcPlot, shell=True, nofail=True)
 
     # Call peaks
     pipe.timestamp("Calling peaks with MACS2")
@@ -281,6 +283,7 @@ def process(args, prj, sample):
 if __name__ == '__main__':
     try:
         main()
+        sys.exit(0)
     except KeyboardInterrupt:
         print("Program canceled by user!")
         sys.exit(1)

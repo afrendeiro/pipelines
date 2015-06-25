@@ -6,7 +6,7 @@ Project management and Sample loop.
 
 from argparse import ArgumentParser
 from pipelines import Project
-from pipelines import toolkit as tk
+from pypiper import ngstk as tk
 import cPickle as pickle
 import os
 import pandas as pd

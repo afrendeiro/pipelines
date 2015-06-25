@@ -179,9 +179,9 @@ class Project(object):
         self.sheet.makeSamples()
 
         # Generate sample objects if merging options are on:
-        if self.config["options"]["mergetechnical"]:
+        if self.config["options"]["mergetechnical"] and hasattr(self.sheet.df, "technicalReplicate"):
             self.sheet.getBiologicalReplicates()
-        if self.config["options"]["mergebiological"]:
+        if self.config["options"]["mergebiological"] and hasattr(self.sheet.df, "biologicalReplicate"):
             self.sheet.getMergedBiologicalReplicates()
 
         # Add samples to Project
@@ -265,7 +265,7 @@ class SampleSheet(object):
         except IOError("Given csv file couldn't be read.") as e:
             raise e
 
-        req = ["technique", "genome", "biologicalReplicate", "technicalReplicate", "unmappedBam"]
+        req = ["technique", "genome", "unmappedBam"]
         missing = [col for col in req if col not in self.df.columns]
 
         if len(missing) != 0:
@@ -446,7 +446,7 @@ class Sample(object):
         """
         Check if any of its important attributes is None.
         """
-        req = ["technique", "genome", "biologicalReplicate", "technicalReplicate", "unmappedBam"]
+        req = ["technique", "genome", "unmappedBam"]
 
         if not all([hasattr(self, attr) for attr in req]):
             raise ValueError("Required columns for sample do not exist.")
@@ -552,14 +552,13 @@ class Sample(object):
         # Mapped: mapped, duplicates marked, removed, reads shifted
         self.dirs.mapped = _os.path.join(self.dirs.sampleRoot, "mapped")
         self.mapped = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.bam")
-        self.dups = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.bam")
-        self.nodups = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.bam")
+        self.filtered = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.filtered.bam")
 
         # Project's public_html folder
         self.bigwig = _os.path.join(self.project.dirs.html, self.name + ".bigWig")
 
         # Track url
-        self.trackURL = self.config["url"] + self.name + ".bigWig"
+        self.trackURL = "/".join([self.config["url"], self.project.name, self.name + ".bigWig"])
 
     def makeSampleDirs(self):
         """
@@ -632,8 +631,7 @@ class ChIPseqSample(Sample):
         # Mapped: mapped, duplicates marked, removed, reads shifted
         # this will create additional bam files with reads shifted
         if self.tagmented:
-            self.dupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.shifted.bam")
-            self.nodupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.shifted.bam")
+            self.filteredshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.filtered.shifted.bam")
 
         # Coverage: read coverage in windows genome-wide
         self.dirs.coverage = _os.path.join(self.dirs.sampleRoot, "coverage")
@@ -643,8 +641,8 @@ class ChIPseqSample(Sample):
         self.qcPlot = _os.path.join(self.dirs.sampleRoot, self.name + "_QC.pdf")
 
         # Peaks: peaks called and derivate files
-        self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks")
-        self.peaks = _os.path.join(self.dirs.sampleRoot, self.name + "_peaks" + (".narrowPeak" if not self.broad else ".broadPeak"))
+        self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, "peaks")
+        self.peaks = _os.path.join(self.dirs.peaks, self.name + ("_peaks.narrowPeak" if not self.broad else "_peaks.broadPeak"))
         self.peaksMotifCentered = _os.path.join(self.dirs.peaks, self.name + "_peaks.motifCentered.bed")
         self.peaksMotifAnnotated = _os.path.join(self.dirs.peaks, self.name + "_peaks.motifAnnotated.bed")
 
@@ -717,14 +715,13 @@ class ATACseqSample(ChIPseqSample):
 
         # Mapped: mapped, duplicates marked, removed, reads shifted
         # this will create additional bam files with reads shifted
-        if self.tagmented:
-            self.dupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.dups.shifted.bam")
-            self.nodupsshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.nodups.shifted.bam")
+        self.filteredshifted = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.filtered.shifted.bam")
 
         # Coverage: read coverage in windows genome-wide
         self.dirs.coverage = _os.path.join(self.dirs.sampleRoot, "coverage")
         self.coverage = _os.path.join(self.dirs.coverage, self.name + ".cov")
 
+        self.insertplot = _os.path.join(self.dirs.sampleRoot, self.name + "_insertLengths.pdf")
         self.qc = _os.path.join(self.dirs.sampleRoot, self.name + "_QC.tsv")
         self.qcPlot = _os.path.join(self.dirs.sampleRoot, self.name + "_QC.pdf")
 
@@ -772,8 +769,7 @@ class QuantseqSample(Sample):
         # Mapped: Tophat mapped, duplicates marked, removed
         self.dirs.mapped = _os.path.join(self.dirs.sampleRoot, "mapped")
         self.mapped = _os.path.join(self.dirs.mapped, "accepted_hits.bam")
-        self.dups = _os.path.join(self.dirs.mapped, "accepted_hits.dups.bam")
-        self.nodups = _os.path.join(self.dirs.mapped, "accepted_hits.nodups.bam")
+        self.filtered = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.filtered.bam")
         # ercc alignments
         self.erccMapped = _os.path.join(self.dirs.mapped, self.name + "_ercc.bam")
         self.erccDups = _os.path.join(self.dirs.mapped, self.name + "_ercc.dups.bam")

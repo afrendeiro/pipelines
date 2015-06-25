@@ -91,20 +91,19 @@ def process(args, prj, sample):
 
     # Convert bam to fastq
     pipe.timestamp("Converting to Fastq format")
+    cmd = tk.bam2fastq(
+        inputBam=sample.unmappedBam,
+        outputFastq=sample.fastq1 if sample.paired else sample.fastq,
+        outputFastq2=sample.fastq2 if sample.paired else None,
+        unpairedFastq=sample.fastqUnpaired if sample.paired else None
+    )
+    pipe.call_lock(cmd, sample.fastq1 if sample.paired else sample.fastq, shell=True)
     if not sample.paired:
-        cmd = tk.bam2fastq(
-            inputBam=sample.unmappedBam,
-            outputFastq=sample.fastq1 if sample.paired else sample.fastq,
-            outputFastq2=sample.fastq2 if sample.paired else None,
-            unpairedFastq=sample.fastqUnpaired if sample.paired else None
-        )
-        pipe.call_lock(cmd, sample.fastq1 if sample.paired else sample.fastq, shell=True)
-        if not sample.paired:
-            pipe.clean_add(sample.fastq, conditional=True)
-        if sample.paired:
-            pipe.clean_add(sample.fastq1, conditional=True)
-            pipe.clean_add(sample.fastq2, conditional=True)
-            pipe.clean_add(sample.fastqUnpaired, conditional=True)
+        pipe.clean_add(sample.fastq, conditional=True)
+    if sample.paired:
+        pipe.clean_add(sample.fastq1, conditional=True)
+        pipe.clean_add(sample.fastq2, conditional=True)
+        pipe.clean_add(sample.fastqUnpaired, conditional=True)
 
     # Trim reads
     pipe.timestamp("Trimming adapters from sample")

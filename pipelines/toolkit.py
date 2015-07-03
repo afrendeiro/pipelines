@@ -123,24 +123,27 @@ def skewer(inputFastq1, outputPrefix, outputFastq1, trimLog, cpus, adapters, inp
     cmds = list()
 
     cmd1 = "skewer --quiet"
+    cmd1 += " -f sanger"
     cmd1 += " -t {0}".format(cpus)
     cmd1 += " -m {0}".format(mode)
     cmd1 += " -x {0}".format(adapters)
     cmd1 += " -o {0}".format(outputPrefix)
     cmd1 += " {0}".format(inputFastq1)
-    if inputFastq2 is not None:
+    if inputFastq2 is None:
+        cmds.append(cmd1)
+    else:
         cmd1 += " {0}".format(inputFastq2)
         cmds.append(cmd1)
 
-    if inputFastq2 is not None:
+    if inputFastq2 is None:
+        cmd2 = "mv {0} {1}".format(outputPrefix + "-trimmed.fastq", outputFastq1)
+        cmds.append(cmd2)
+    else:
         cmd2 = "mv {0} {1}".format(outputPrefix + "-trimmed-pair1.fastq", outputFastq1)
         cmds.append(cmd2)
 
         cmd3 = "mv {0} {1}".format(outputPrefix + "-trimmed-pair2.fastq", outputFastq2)
         cmds.append(cmd3)
-    else:
-        cmd2 = "mv {0} {1}".format(outputPrefix + "-trimmed.fastq", outputFastq1)
-        cmds.append(cmd2)
 
     cmd4 = "mv {0} {1}".format(outputPrefix + "-trimmed.log", trimLog)
     cmds.append(cmd4)
@@ -178,6 +181,28 @@ def topHatMap(inputFastq, outDir, genome, transcriptome, cpus):
 
 
 def markDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
+    import re
+
+    transientFile = re.sub("\.bam$", "", outputBam) + ".dups.nosort.bam"
+    outputBam = re.sub("\.bam$", "", outputBam)
+
+    cmd1 = "java -Xmx4g -jar `which MarkDuplicates.jar`"
+    cmd1 += " INPUT={0}".format(inputBam)
+    cmd1 += " OUTPUT={0}".format(transientFile)
+    cmd1 += " METRICS_FILE={0}".format(metricsFile)
+    cmd1 += " VALIDATION_STRINGENCY=LENIENT"
+    cmd1 += " TMP_DIR={0}".format(tempDir)
+
+    # Sort bam file with marked duplicates
+    cmd2 = "samtools sort {0} {1}".format(transientFile, outputBam)
+
+    # Remove transient file
+    cmd3 = "if [[ -s {0} ]]; then rm {0}; fi".format(transientFile)
+
+    return [cmd1, cmd2, cmd3]
+
+
+def picardMarkDuplicates(inputBam, outputBam, metricsFile, tempDir="."):
     import re
 
     transientFile = re.sub("\.bam$", "", outputBam) + ".dups.nosort.bam"
@@ -277,6 +302,8 @@ def qc():
 
     $PRESEQ lc_extrap -e 1e8 -s 2e6 -B $PROJECTDIR/mapped/$SAMPLE_NAME.trimmed.bowtie2.sorted.shifted.dup.bam \
     -o $PROJECTDIR/mapped/$SAMPLE_NAME_qc_lc_extrap.txt
+
+    preseq lc_extrap -o OUTPUT.txt -pe -e 1e+8 -s 5e+05 -B INPUT.bam
     """
     raise NotImplementedError("Function not implemented yet.")
 
@@ -385,9 +412,11 @@ def plotInsertSizesFit(bam, plot):
     plt.savefig(plot, bbox_inches="tight")
 
 
-def bamToBigWig(inputBam, outputBigWig, genomeSizes, genome, tagmented=False):
+
+def bamToBigWig(inputBam, outputBigWig, genomeSizes, genome, tagmented=False, scale=False):
     import os
     import re
+    import subprocess
 
     # TODO:
     # addjust fragment length dependent on read size and real fragment size
@@ -399,10 +428,17 @@ def bamToBigWig(inputBam, outputBigWig, genomeSizes, genome, tagmented=False):
     if not tagmented:
         cmd1 += " bedtools slop -i stdin -g {0} -s -l 0 -r 130 |".format(genomeSizes)
         cmd1 += " fix_bedfile_genome_boundaries.py {0} |".format(genome)
-    else:
-        cmd1 = "bedtools bamtobed -i {0} |".format(inputBam)
-        cmd1 += " get5primePosition.py |"
-    cmd1 += " genomeCoverageBed -i stdin -bg -g {0} > {1}.cov".format(genomeSizes, transientFile)
+    cmd1 += " genomeCoverageBed {0}{1}-bg -g {2} -i stdin > {3}.cov".format(
+            "-5 " if tagmented else "",
+            "-scale {0} ".format(totalReads) if scale else "",
+            genomeSizes,
+            transientFile
+        )
+
+    """sum=$(awk '{sum += $4} END {print sum}' {0} )""".format(transientFile)
+
+    """awk -v sum="$sum" ' OFS="\t" { $4 = ($4 / sum) * 1000000; print }' public_html/chipmentation/bigWig/${NAME}.bedgraph \
+    > public_html/chipmentation/normalized/${NAME}.normalized.bedgraph"""
 
     cmd2 = "bedGraphToBigWig {0}.cov {1} {2}".format(transientFile, genomeSizes, outputBigWig)
     # remove cov file

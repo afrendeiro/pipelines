@@ -308,7 +308,7 @@ def qc():
     raise NotImplementedError("Function not implemented yet.")
 
 
-def getFragmentSizes(bam):
+def getFragmentSizes(bam, maxInsert=1500):
     try:
         import pysam
         import numpy as np
@@ -320,16 +320,16 @@ def getFragmentSizes(bam):
     bam = pysam.Samfile(bam, 'rb')
 
     for read in bam:
-        if bam.getrname(read.tid) != "chrM" and read.tlen < 1500:
+        if bam.getrname(read.tid) != "chrM" and read.tlen < maxInsert:
             fragSizes.append(read.tlen)
     bam.close()
 
     return np.array(fragSizes)
 
 
-def plotInsertSizesFit(bam, plot):
+def plotInsertSizesFit(bam, plot, outputCSV, maxInsert=1500, smallestInsert=30):
     """
-    From here:
+    Heavy inspiration from here:
     https://github.com/dbrg77/ATAC/blob/master/ATAC_seq_read_length_curve_fitting.ipynb
     """
     try:
@@ -337,56 +337,70 @@ def plotInsertSizesFit(bam, plot):
         import numpy as np
         import matplotlib.mlab as mlab
         from scipy.optimize import curve_fit
+        from scipy.integrate import simps
         import matplotlib.pyplot as plt
     except:
         return
 
-    def getFragmentSizes(bam):
+    try:
+        import seaborn as sns
+        sns.set_style("whitegrid")
+    except:
+        pass
+
+    def getFragmentSizes(bam, maxInsert=1500):
         fragSizes = list()
 
         bam = pysam.Samfile(bam, 'rb')
 
-        for read in bam:
-            if read.tlen < 1500:
+        for i, read in enumerate(bam):
+            if read.tlen < maxInsert:
                 fragSizes.append(read.tlen)
         bam.close()
 
         return np.array(fragSizes)
 
-    def expo(x, q, r):
-        """
-        Exponential fuction.
-        """
-        return q * np.exp(-r * x)
-
     def mixtureFunction(x, *p):
         """
-        Mixture function with six gaussian (nucleosome reads) and one exponential function (nucleosome-free reads).
+        Mixture function to model four gaussian (nucleosomal) and one exponential (nucleosome-free) distributions.
         """
-        m1, s1, w1, m2, s2, w2, m3, s3, w3, m4, s4, w4, m5, s5, w5, m6, s6, w6, q, r = p
+        m1, s1, w1, m2, s2, w2, m3, s3, w3, m4, s4, w4, q, r = p
+        nfr = expo(x, 2.9e-02, 2.8e-02)
+        nfr[:smallestInsert] = 0
+
         return (mlab.normpdf(x, m1, s1) * w1 +
                 mlab.normpdf(x, m2, s2) * w2 +
                 mlab.normpdf(x, m3, s3) * w3 +
                 mlab.normpdf(x, m4, s4) * w4 +
-                mlab.normpdf(x, m5, s5) * w5 +
-                mlab.normpdf(x, m6, s6) * w6 +
-                q * np.exp(-r * x))
+                nfr)
+
+    def expo(x, q, r):
+        """
+        Exponential function.
+        """
+        return q * np.exp(-r * x)
 
     # get fragment sizes
     fragSizes = getFragmentSizes(bam)
 
     # bin
-    numBins = np.linspace(0, 1500, 1501)
-    y, scatter_x = np.histogram(fragSizes, numBins, normed=1)
+    numBins = np.linspace(0, maxInsert, maxInsert + 1)
+    y, scatter_x = np.histogram(fragSizes, numBins, density=1)
     # get the mid-point of each bin
     x = (scatter_x[:-1] + scatter_x[1:]) / 2
 
     # Parameters are empirical, need to check
-    paramGuess = [200, 50, 0.7, 400, 50, 0.15, 600, 50, 0.1, 800, 55, 0.045, 1000, 60, 0.015, 1200, 60, 0.007, 0.03616429, 0.02297901]
+    paramGuess = [
+        200, 50, 0.7,  # gaussians
+        400, 50, 0.15,
+        600, 50, 0.1,
+        800, 55, 0.045,
+        2.9e-02, 2.8e-02  # exponential
+    ]
 
-    popt3, pcov3 = curve_fit(mixtureFunction, x[51:], y[51:], p0=paramGuess, maxfev=100000)
+    popt3, pcov3 = curve_fit(mixtureFunction, x[smallestInsert:], y[smallestInsert:], p0=paramGuess, maxfev=100000)
 
-    m1, s1, w1, m2, s2, w2, m3, s3, w3, m4, s4, w4, m5, s5, w5, m6, s6, w6, q, r = popt3
+    m1, s1, w1, m2, s2, w2, m3, s3, w3, m4, s4, w4, q, r = popt3
 
     # Plot
     plt.figure(figsize=(12, 12))
@@ -399,18 +413,39 @@ def plotInsertSizesFit(bam, plot):
     plt.plot(x, mlab.normpdf(x, m2, s2) * w2, 'g-', lw=1.5, label="2nd nucleosome")
     plt.plot(x, mlab.normpdf(x, m3, s3) * w3, 'b-', lw=1.5, label="3rd nucleosome")
     plt.plot(x, mlab.normpdf(x, m4, s4) * w4, 'c-', lw=1.5, label="4th nucleosome")
-    plt.plot(x, mlab.normpdf(x, m5, s5) * w5, 'm-', lw=1.5, label="5th nucleosome")
-    plt.plot(x, mlab.normpdf(x, m6, s6) * w6, 'y-', lw=1.5, label="6th nucleosome")
 
     # Plot nucleosome-free fit
-    plt.plot(x, expo(x, 6.93385577e-02, 3.34278108e-02), 'k-', lw=1.5, label="nucleosome-free")
+    nfr = expo(x, 2.9e-02, 2.8e-02)
+    nfr[:smallestInsert] = 0
+    plt.plot(x, nfr, 'k-', lw=1.5, label="nucleosome-free")
 
     # Plot sum of fits
     ys = mixtureFunction(x, *popt3)
     plt.plot(x, ys, 'k--', lw=3.5, label="fit sum")
 
+    plt.legend()
+    plt.xlabel("Fragment size (bp)")
+    plt.ylabel("Density")
     plt.savefig(plot, bbox_inches="tight")
 
+    # Integrate curves and get areas under curve
+    areas = [
+        ["fraction", "area under curve", "max density"],
+        ["Nucleosome-free fragments", simps(nfr), max(nfr)],
+        ["1st nucleosome", simps(mlab.normpdf(x, m1, s1) * w1), max(mlab.normpdf(x, m1, s1) * w1)],
+        ["2nd nucleosome", simps(mlab.normpdf(x, m2, s2) * w1), max(mlab.normpdf(x, m2, s2) * w2)],
+        ["3rd nucleosome", simps(mlab.normpdf(x, m3, s3) * w1), max(mlab.normpdf(x, m3, s3) * w3)],
+        ["4th nucleosome", simps(mlab.normpdf(x, m4, s4) * w1), max(mlab.normpdf(x, m4, s4) * w4)]
+    ]
+
+    try:    
+        import csv
+
+        with open(outputCSV, "w") as f:
+            writer = csv.writer(f)
+            writer.writerows(areas)
+    except:
+        pass
 
 
 def bamToBigWig(inputBam, outputBigWig, genomeSizes, genome, tagmented=False, scale=False):

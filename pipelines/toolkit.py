@@ -340,6 +340,7 @@ def plotInsertSizesFit(bam, plot, outputCSV, maxInsert=1500, smallestInsert=30):
         from scipy.integrate import simps
         import matplotlib.pyplot as plt
     except:
+        print("Necessary Python modules couldn't be loaded.")
         return
 
     try:
@@ -705,3 +706,171 @@ def diffBind(inputCSV, jobName, plotsDir):
     )
 
     return cmd
+
+
+def getReadType(bamFile, n=10):
+    """
+    Gets the read type (single, paired) and length of bam file.
+
+    :param bamFile: Bam file to determine read attributes.
+    :type bamFile: str
+    :param n: Number of lines to read from bam file.
+    :type n: int
+    :returns: tuple of (readType=string, readLength=int).
+    :rtype: tuple
+    """
+    from collections import Counter
+
+    try:
+        p = subprocess.Popen(['samtools', 'view', bamFile], stdout=subprocess.PIPE)
+
+        # Count paired alignments
+        paired = 0
+        readLength = Counter()
+        while n > 0:
+            line = p.stdout.next().split("\t")
+            flag = int(line[1])
+            readLength[len(line[9])] += 1
+            if 1 & flag:  # check decimal flag contains 1 (paired)
+                paired += 1
+            n -= 1
+        p.kill()
+    except:
+        print("Cannot read provided bam file.")
+        raise
+
+    # Get most abundant read readLength
+    readLength = sorted(readLength)[-1]
+
+    # If at least half is paired, return True
+    if paired > (n / 2):
+        return ("PE", readLength)
+    else:
+        return ("SE", readLength)
+
+
+def parseBowtieStats(statsFile):
+    """
+    Parses Bowtie2 stats file, returns series with values.
+
+    :param statsFile: Bowtie2 output file with alignment statistics.
+    :type statsFile: str
+    """
+    import re
+
+    stats = pd.Series(index=["readCount", "unpaired", "unaligned", "unique", "multiple", "alignmentRate"])
+
+    try:
+        with open(statsFile) as handle:
+            content = handle.readlines()  # list of strings per line
+    except:
+        return stats
+
+    # total reads
+    try:
+        line = [i for i in range(len(content)) if " reads; of these:" in content[i]][0]
+        stats["readCount"] = re.sub("\D.*", "", content[line])
+        if 7 > len(content) > 2:
+            line = [i for i in range(len(content)) if "were unpaired; of these:" in content[i]][0]
+            stats["unpaired"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        else:
+            line = [i for i in range(len(content)) if "were paired; of these:" in content[i]][0]
+            stats["unpaired"] = stats["readCount"] - int(re.sub("\D", "", re.sub("\(.*", "", content[line])))
+        line = [i for i in range(len(content)) if "aligned 0 times" in content[i]][0]
+        stats["unaligned"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if "aligned exactly 1 time" in content[i]][0]
+        stats["unique"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if "aligned >1 times" in content[i]][0]
+        stats["multiple"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if "overall alignment rate" in content[i]][0]
+        stats["alignmentRate"] = re.sub("\%.*", "", content[line]).strip()
+    except IndexError:
+        pass
+    return stats
+
+
+def parseDuplicateStats(statsFile):
+    """
+    Parses sambamba markdup output, returns series with values.
+
+    :param statsFile: sambamba output file with duplicate statistics.
+    :type statsFile: str
+    """
+    import pandas
+    import re
+
+    series = pd.Series()
+
+    try:
+        with open(statsFile) as handle:
+            content = handle.readlines()  # list of strings per line
+    except:
+        return series
+
+    try:
+        line = [i for i in range(len(content)) if "single ends (among them " in content[i]][0]
+        series["single-ends"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if " end pairs...   done in " in content[i]][0]
+        series["paired-ends"] = re.sub("\D", "", re.sub("\.\.\..*", "", content[line]))
+        line = [i for i in range(len(content)) if " duplicates, sorting the list...   done in " in content[i]][0]
+        series["duplicates"] = re.sub("\D", "", re.sub("\.\.\..*", "", content[line]))
+    except IndexError:
+        pass
+    return series
+
+
+def parseQC(sampleName, qcFile):
+    """
+    Parses QC table produced by phantompeakqualtools (spp) and returns sample quality metrics.
+
+    :param sampleName: Sample name.
+    :type sampleName: str
+    :param qcFile: phantompeakqualtools output file sample quality measurements.
+    :type qcFile: str
+    """
+    series = pd.Series()
+    try:
+        with open(qcFile) as handle:
+            line = handle.readlines()[0].strip().split("\t")  # list of strings per line
+        series["NSC"] = line[-3]
+        series["RSC"] = line[-2]
+        series["qualityTag"] = line[-1]
+    except:
+        pass
+    return series
+
+
+def getPeakNumber(sample):
+    """
+    Counts number of peaks from a sample's peak file.
+
+    :param sample: A Sample object with the "peaks" attribute.
+    :type sampleName: pipelines.Sample
+    """
+    import subprocess
+    import re
+
+    proc = subprocess.Popen(["wc", "-l", sample.peaks], stdout=subprocess.PIPE)
+    out, err = proc.communicate()
+    sample["peakNumber"] = re.sub("\D.*", "", out)
+
+    return sample
+
+
+def getFRiP(sample):
+    """
+    Calculates the fraction of reads in peaks for a given sample.
+
+    :param sample: A Sample object with the "peaks" attribute.
+    :type sampleName: pipelines.Sample
+    """
+    import re
+
+    with open(sample.frip, "r") as handle:
+        content = handle.readlines()
+
+    readsInPeaks = int(re.sub("\D", "", content[0]))
+    mappedReads = sample["readCount"] - sample["unaligned"]
+
+    return pd.Series(readsInPeaks / mappedReads, index="FRiP")
+

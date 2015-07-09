@@ -223,7 +223,7 @@ def process(args, prj, sample):
     tk.plotInsertSizesFit(
         bam=sample.filtered,
         plot=sample.insertplot,
-        outputCSV=self.insertdata
+        outputCSV=sample.insertdata
     )
 
     # Count coverage genome-wide

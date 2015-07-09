@@ -562,7 +562,7 @@ def macs2CallPeaks(treatmentBam, outputDir, sampleName, genome, controlBam=None,
         cmd = "macs2 callpeak -t {0}".format(treatmentBam)
         if controlBam is not None:
             cmd += " -c {0}".format(controlBam)
-        cmd += " --bw 200 -g {0} -n {0} --outdir {0}".format(sizes[genome], sampleName, outputDir)
+        cmd += " --bw 200 -g {0} -n {1} --outdir {2}".format(sizes[genome], sampleName, outputDir)
         # --fix-bimodal --extsize 180
     else:
         # Parameter setting for broad factors according to Nature Protocols (2012)
@@ -719,6 +719,7 @@ def getReadType(bamFile, n=10):
     :returns: tuple of (readType=string, readLength=int).
     :rtype: tuple
     """
+    import subprocess
     from collections import Counter
 
     try:
@@ -756,6 +757,7 @@ def parseBowtieStats(statsFile):
     :param statsFile: Bowtie2 output file with alignment statistics.
     :type statsFile: str
     """
+    import pandas as pd
     import re
 
     stats = pd.Series(index=["readCount", "unpaired", "unaligned", "unique", "multiple", "alignmentRate"])
@@ -796,7 +798,7 @@ def parseDuplicateStats(statsFile):
     :param statsFile: sambamba output file with duplicate statistics.
     :type statsFile: str
     """
-    import pandas
+    import pandas as pd
     import re
 
     series = pd.Series()
@@ -828,6 +830,8 @@ def parseQC(sampleName, qcFile):
     :param qcFile: phantompeakqualtools output file sample quality measurements.
     :type qcFile: str
     """
+    import pandas as pd
+
     series = pd.Series()
     try:
         with open(qcFile) as handle:
@@ -865,6 +869,7 @@ def getFRiP(sample):
     :type sampleName: pipelines.Sample
     """
     import re
+    import pandas as pd
 
     with open(sample.frip, "r") as handle:
         content = handle.readlines()

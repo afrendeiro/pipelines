@@ -449,7 +449,7 @@ def plotInsertSizesFit(bam, plot, outputCSV, maxInsert=1500, smallestInsert=30):
         pass
 
 
-def bamToBigWig(inputBam, outputBigWig, genomeSizes, genome, tagmented=False, scale=False):
+def bamToBigWig(inputBam, outputBigWig, genomeSizes, genome, tagmented=False, normalize=False):
     import os
     import re
     import subprocess
@@ -458,31 +458,33 @@ def bamToBigWig(inputBam, outputBigWig, genomeSizes, genome, tagmented=False, sc
     # addjust fragment length dependent on read size and real fragment size
     # (right now it asssumes 50bp reads with 180bp fragments)
 
+    cmds = list()
+
     transientFile = os.path.abspath(re.sub("\.bigWig", "", outputBigWig))
 
     cmd1 = "bedtools bamtobed -i {0} |".format(inputBam)
     if not tagmented:
         cmd1 += " bedtools slop -i stdin -g {0} -s -l 0 -r 130 |".format(genomeSizes)
         cmd1 += " fix_bedfile_genome_boundaries.py {0} |".format(genome)
-    cmd1 += " genomeCoverageBed {0}{1}-bg -g {2} -i stdin > {3}.cov".format(
+    cmd1 += " genomeCoverageBed {0}-bg -g {1} -i stdin > {2}.cov".format(
             "-5 " if tagmented else "",
-            "-scale {0} ".format(totalReads) if scale else "",
             genomeSizes,
             transientFile
         )
+    cmds.append(cmd1)
 
-    # """sum=$(awk '{{sum += $4}} END {print sum}' {0} )""".format(transientFile)
+    if normalize:
+        cmds.append("""awk 'NR==FNR{{sum+= $4; next}}{{ $4 = ($4 / sum) * 1000000; print}}' {0}.cov {0}.cov > {0}.normalized.cov""".format(transientFile))
 
-    # """awk -v sum="$sum" ' OFS="\t" { $4 = ($4 / sum) * 1000000; print }' public_html/chipmentation/bigWig/${NAME}.bedgraph \
-    # > public_html/chipmentation/normalized/${NAME}.normalized.bedgraph"""
+    cmds.append("bedGraphToBigWig {0}{1}.cov {2} {3}".format(transientFile, ".normalized" if normalize else "", genomeSizes, outputBigWig))
+    
+    # remove tmp files
+    cmds.append("if [[ -s {0}.cov ]]; then rm {0}.cov; fi".format(transientFile))
+    cmds.append("if [[ -s {0}.normalized.cov ]]; then rm {0}.normalized.cov; fi".format(transientFile))
 
-    cmd2 = "bedGraphToBigWig {0}.cov {1} {2}".format(transientFile, genomeSizes, outputBigWig)
-    # remove cov file
-    cmd3 = "if [[ -s {0}.cov ]]; then rm {0}.cov; fi".format(transientFile)
+    cmds.append("chmod 755 {0}".format(outputBigWig))
 
-    cmd4 = "chmod 755 {0}".format(outputBigWig)
-
-    return [cmd1, cmd2, cmd3, cmd4]
+    return cmds
 
 
 def addTrackToHub(sampleName, trackURL, trackHub, colour, fivePrime=""):

@@ -252,33 +252,32 @@ def process(args, prj, sample):
     if not os.path.exists(sample.dirs.peaks):
         os.makedirs(sample.dirs.peaks)
 
-    cmd = tk.macs2CallPeaks(
+    cmd = tk.macs2CallPeaksATACSeq(
         treatmentBam=sample.filteredshifted,
         outputDir=sample.dirs.peaks,
         sampleName=sample.name,
-        genome=sample.genome,
-        broad=True
+        genome=sample.genome
     )
     pipe.call_lock(cmd, sample.peaks, shell=True)
 
-    # Filter peaks based on mappability regions
-    pipe.timestamp("Filtering peaks in low mappability regions")
+    # # Filter peaks based on mappability regions
+    # pipe.timestamp("Filtering peaks in low mappability regions")
 
-    # get closest read length of sample to available mappability read lengths
-    closestLength = min(prj.config["annotations"]["alignability"][sample.genome].keys(), key=lambda x:abs(x - sample.readLength)) 
+    # # get closest read length of sample to available mappability read lengths
+    # closestLength = min(prj.config["annotations"]["alignability"][sample.genome].keys(), key=lambda x:abs(x - sample.readLength)) 
 
-    cmd = tk.filterPeaksMappability(
-        peaks=sample.peaks,
-        alignability=prj.config["annotations"]["alignability"][sample.genome][closestLength],
-        filteredPeaks=sample.filteredPeaks
-    )
-    pipe.call_lock(cmd, sample.filteredPeaks, shell=True)
+    # cmd = tk.filterPeaksMappability(
+    #     peaks=sample.peaks,
+    #     alignability=prj.config["annotations"]["alignability"][sample.genome][closestLength],
+    #     filteredPeaks=sample.filteredPeaks
+    # )
+    # pipe.call_lock(cmd, sample.filteredPeaks, shell=True)
 
     # Calculate fraction of reads in peaks (FRiP)
     pipe.timestamp("Calculating fraction of reads in peaks (FRiP)")
     cmd = tk.calculateFRiP(
         inputBam=sample.filteredshifted,
-        inputBed=sample.filteredPeaks,
+        inputBed=sample.peaks,
         output=sample.frip
     )
     pipe.call_lock(cmd, sample.frip, shell=True)

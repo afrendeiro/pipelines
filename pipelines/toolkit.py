@@ -580,6 +580,16 @@ def macs2CallPeaks(treatmentBam, outputDir, sampleName, genome, controlBam=None,
     return cmd
 
 
+def macs2CallPeaksATACSeq(treatmentBam, outputDir, sampleName, genome):
+
+    sizes = {"hg38": 2.7e9, "hg19": 2.7e9, "mm10": 1.87e9, "dr7": 1.412e9}
+    
+    cmd = "macs2 callpeak -t {0}".format(treatmentBam)
+    cmd += " --nomodel --extsize 147 -g {0} -n {1} --outdir {2}".format(sizes[genome], sampleName, outputDir)
+
+    return cmd
+
+
 def macs2PlotModel(sampleName, outputDir):
     import os
 

@@ -289,6 +289,19 @@ def indexBam(inputBam):
     return cmd
 
 
+def chipQC(inputBam, plot, cpus):
+    import re
+
+    transientFile = re.sub("", repl, inputBam)
+
+    cmd1 = "Q --thread-num {0} -bco -t {1} -o {2}".format(cpus, inputBam, output)
+    cmd2 = "Rscript {0}-Q-binding-characteristics.R".format(transientFile)
+    cmd3 = "mv {0}-Q-binding-characteristics.pdf {1}".format(transientFile, plot)
+    cmd4 = "rm {0}-Q-binding-characteristics.R".format(transientFile)
+
+    return [cmd1, cmd2, cmd3, cmd4]
+
+
 def peakTools(inputBam, output, plot, cpus):
     cmd = "Rscript `which run_spp.R` -rf -savp -savp={0} -s=0:5:500 -c={1} -out={2}".format(plot, inputBam, output)
 

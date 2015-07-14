@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 
 """
+pipelines
+=========
+
 Project management and Sample loop.
 """
 
@@ -20,7 +23,6 @@ __author__ = "Andre Rendeiro"
 __copyright__ = "Copyright 2015, Andre Rendeiro"
 __credits__ = []
 __license__ = "GPL2"
-__version__ = "0.1"
 __maintainer__ = "Andre Rendeiro"
 __email__ = "arendeiro@cemm.oeaw.ac.at"
 __status__ = "Development"
@@ -28,7 +30,10 @@ __status__ = "Development"
 
 def main():
     # Parse command-line arguments
-    parser = ArgumentParser(description="Project management and sample loop.")
+    parser = ArgumentParser(
+        prog="pipelines",
+        description="pipelines. Project management and sample loop."
+    )
     parser = addArgs(parser)
 
     # Parse

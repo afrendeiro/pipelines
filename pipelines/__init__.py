@@ -156,7 +156,7 @@ class Project(object):
         """
         for d in [self.dirs.parenthtml, self.dirs.html]:
             try:
-                _os.chmod(d, 0755)
+                _os.chmod(d, 0o755)
             except OSError:
                 # logger.error("cannot change folder's mode: %s" % d)
                 continue

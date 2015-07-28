@@ -7,7 +7,7 @@ ChIP-seq pipeline
 from argparse import ArgumentParser
 import os
 import sys
-from pipelines import toolkit as tk
+from . import toolkit as tk
 import cPickle as pickle
 from pypiper import Pypiper
 
@@ -24,7 +24,10 @@ __status__ = "Development"
 
 def main():
     # Parse command-line arguments
-    parser = ArgumentParser(description="ChIP-seq pipeline.")
+    parser = ArgumentParser(
+        prog="chipseq-pipeline",
+        description="ChIP-seq pipeline."
+    )
     parser = mainArgParser(parser)
     args = parser.parse_args()
     # save pickle
@@ -65,7 +68,6 @@ def process(args, prj, sample):
     and removed, indexed (and shifted if necessary) Bam files
     along with a UCSC browser track.
     """
-
     print("Start processing ChIP-seq sample %s." % sample.name)
 
     # Start Pypiper object
@@ -83,7 +85,7 @@ def process(args, prj, sample):
 
     # Fastqc
     pipe.timestamp("Measuring sample quality with Fastqc")
-    cmd = tk.fastqc(
+    cmd = tk.fastQC(
         inputBam=sample.unmappedBam,
         outputDir=sample.dirs.sampleRoot,
         sampleName=sample.name
@@ -135,7 +137,7 @@ def process(args, prj, sample):
             inputFastq2=sample.fastq2 if sample.paired else None,
             outputPrefix=os.path.join(sample.dirs.unmapped, sample.name),
             outputFastq1=sample.trimmed1 if sample.paired else sample.trimmed,
-            outputFastq2=sample.trimmed2 if sample.paired else None,
+            outputFastq2=sample.trimmed1 if sample.paired else None,
             trimLog=sample.trimlog,
             cpus=args.cpus,
             adapters=prj.config["adapters"]
@@ -202,7 +204,7 @@ def process(args, prj, sample):
         outputBigWig=sample.bigwig,
         genomeSizes=prj.config["annotations"]["chrsizes"][sample.genome],
         genome=sample.genome,
-        tagmented=False,  # by default make extended tracks
+        tagmented=False,  # by default tracks are made for full extended reads
         normalize=True
     )
     pipe.call_lock(cmd, sample.bigwig, shell=True)

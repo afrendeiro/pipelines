@@ -8,13 +8,11 @@ Project management and Sample loop.
 """
 
 from argparse import ArgumentParser
-from pipelines import Project
-from pipelines import toolkit as tk
+from .models import Project
+from . import toolkit as tk
 import cPickle as pickle
 import os
 import pandas as pd
-import re
-import subprocess
 import sys
 import textwrap
 import time
@@ -23,6 +21,7 @@ __author__ = "Andre Rendeiro"
 __copyright__ = "Copyright 2015, Andre Rendeiro"
 __credits__ = []
 __license__ = "GPL2"
+__version__ = "0.1"
 __maintainer__ = "Andre Rendeiro"
 __email__ = "arendeiro@cemm.oeaw.ac.at"
 __status__ = "Development"
@@ -34,7 +33,7 @@ def main():
         prog="pipelines",
         description="pipelines. Project management and sample loop."
     )
-    parser = addArgs(parser)
+    parser = add_args(parser)
 
     # Parse
     args = parser.parse_args()
@@ -45,18 +44,18 @@ def main():
 
     # Start main function
     if args.stats:
-        readStats(args, prj)
+        read_stats(args, prj)
     elif args.compare:
         compare(args, prj)
     else:
-        sampleLoop(args, prj)
+        sample_loop(args, prj)
 
     # Exit
     print("Finished and exiting.")
     sys.exit(0)
 
 
-def addArgs(parser):
+def add_args(parser):
     """
     Options for project and pipelines.
     """
@@ -123,7 +122,7 @@ def addArgs(parser):
     return parser
 
 
-def sampleLoop(args, prj):
+def sample_loop(args, prj):
     """
     Loop through all samples and submit jobs to the pipeline under Slurm.
 
@@ -136,7 +135,7 @@ def sampleLoop(args, prj):
     print("Starting sample preprocessing into jobs.")
 
     # start pipeline
-    runName = "_".join([prj.name, time.strftime("%Y%m%d-%H%M%S")])
+    run_name = "_".join([prj.name, time.strftime("%Y%m%d-%H%M%S")])
 
     # add track headers to track hubs
     for genome in pd.Series([s.genome for s in prj.samples]).unique():
@@ -145,8 +144,8 @@ def sampleLoop(args, prj):
 
     # Loop through samples, submit to corresponding job (preprocess, analyse)
     for sample in prj.samples:
-        # get jobname
-        jobName = "_".join([runName, sample.sampleName])
+        # get job_name
+        job_name = "_".join([run_name, sample.name])
 
         # if unmappedBam is a list, add final "unmapped" attr to sample object
         if type(sample.unmappedBam) is list:
@@ -154,9 +153,9 @@ def sampleLoop(args, prj):
 
         # assemble command
         # slurm header
-        jobCode = tk.slurmHeader(
-            jobName=jobName,
-            output=os.path.join(prj.dirs.logs, jobName + ".slurm.log"),
+        job_code = tk.slurmHeader(
+            job_name=job_name,
+            output=os.path.join(prj.dirs.logs, job_name + ".slurm.log"),
             queue=args.queue,
             time=args.time,
             cpusPerTask=args.cpus,
@@ -164,56 +163,56 @@ def sampleLoop(args, prj):
             userMail=args.user_mail
         )
 
-        samplePickle = os.path.join(prj.dirs.pickles, jobName + ".pickle")
+        sample_pickle = os.path.join(prj.dirs.pickles, job_name + ".pickle")
         # self reference the pickle file in its sample
-        sample.pickle = samplePickle
+        sample.pickle = sample_pickle
 
         # If sample has control attribute, get that sample and pair them
-        if hasattr(sample, "controlSampleName"):
-            if type(sample.controlSampleName) == str:
+        if hasattr(sample, "controlname"):
+            if type(sample.controlname) == str:
                 # Assign the sample with that name to ctrl
-                ctrl = [s for s in prj.samples if s.sampleName == sample.controlSampleName]
+                ctrl = [s for s in prj.samples if s.name == sample.controlname]
                 # if there is only one record, use that as control
                 if len(ctrl) == 1:
                     sample.ctrl = ctrl[0]
                 else:
                     # if not, process sample anyway, but without a matched control
-                    print("Provided control sample name does not exist or is ambiguous: %s" % sample.controlSampleName)
+                    print("Provided control sample name does not exist or is ambiguous: %s" % sample.controlname)
 
         # save pickle with all objects (this time, 2nd element is a tuple!)
-        pickle.dump((prj, sample, args), open(samplePickle, "wb"))
+        pickle.dump((prj, sample, args), open(sample_pickle, "wb"))
 
         # Actual call to pipeline
         technique = sample.technique.upper()
         if technique in prj.config["techniques"]["chipseq"]:
-            jobCode += "chipseq-pipeline {0}\n".format(samplePickle)
+            job_code += "chipseq-pipeline {0}\n".format(sample_pickle)
         elif technique in prj.config["techniques"]["cm"]:
-            jobCode += "chipseq-pipeline {0}\n".format(samplePickle)
+            job_code += "chipseq-pipeline {0}\n".format(sample_pickle)
         elif technique in prj.config["techniques"]["atacseq"]:
-            jobCode += "atacseq-pipeline {0}\n".format(samplePickle)
+            job_code += "atacseq-pipeline {0}\n".format(sample_pickle)
         elif technique in prj.config["techniques"]["dnase"]:
-            jobCode += "atacseq-pipeline {0}\n".format(samplePickle)
+            job_code += "atacseq-pipeline {0}\n".format(sample_pickle)
         elif technique in prj.config["techniques"]["quantseq"]:
-            jobCode += "quantseq-pipeline {0}\n".format(samplePickle)
+            job_code += "quantseq-pipeline {0}\n".format(sample_pickle)
         else:
             raise TypeError("Sample is not in known sample class.")
 
         # Slurm footer
-        jobCode += tk.slurmFooter()
+        job_code += tk.slurmFooter()
 
         # Save code as executable
-        jobFile = os.path.join(prj.dirs.executables, jobName + ".sh")
-        with open(jobFile, 'w') as handle:
-            handle.write(textwrap.dedent(jobCode))
+        job_file = os.path.join(prj.dirs.executables, job_name + ".sh")
+        with open(job_file, 'w') as handle:
+            handle.write(textwrap.dedent(job_code))
 
         # Submit to slurm
         if not args.dry_run:
-            status = tk.slurmSubmitJob(jobFile)
+            status = tk.slurmSubmitJob(job_file)
 
             if status != 0:
-                print("Could not submit job '%s' to slurm." % jobFile)
+                print("Could not submit job '%s' to slurm." % job_file)
                 sys.exit(1)
-            print("Submitted job to slurm: '%s'" % jobName)
+            print("Submitted job to slurm: '%s'" % job_name)
 
         # Create link to trackHub in project folder
         tk.linkToTrackHub(
@@ -224,13 +223,13 @@ def sampleLoop(args, prj):
 
     # write original annotation sheet to project folder
     # add field for manual sample-control pairing
-    prj.sheet.df.controlSampleName = None
+    prj.sheet.df.controlname = None
     prj.sheet.to_csv(os.path.join(prj.dirs.root, prj.name + ".annotation_sheet.csv"))
 
     print("Finished preprocessing")
 
 
-def readStats(args, prj):
+def read_stats(args, prj):
     """
     Given an annotation sheet with replicates, gets number of reads mapped, duplicates, etc...
 
@@ -239,35 +238,34 @@ def readStats(args, prj):
     :param prj: `Project` object.
     :type prj: pipelines.Project
     """
-    import re
 
     print("Starting sample read stats.")
 
-    bowtieCols = ["readCount", "unpaired", "unaligned", "unique", "multiple", "alignmentRate"]
+    bowtie_cols = ["readCount", "unpaired", "unaligned", "unique", "multiple", "alignmentRate"]
 
-    samples = pd.DataFrame(index=["sampleName"] + bowtieCols + ["single-ends", "paired-ends", "duplicates", "NSC", "RSC", "qualityTag", "peakNumber", "FRiP"])
+    samples = pd.DataFrame(index=["name"] + bowtie_cols + ["single-ends", "paired-ends", "duplicates", "NSC", "RSC", "qualityTag", "peakNumber", "FRiP"])
 
     for sample in prj.samples:
         sample = sample.asSeries()
         # Get alignment stats
         try:
-            sample = sample.append(tk.parseBowtieStats(sample.alnRates))
+            sample = sample.append(parse_bowtie_stats(sample.alnRates))
         except:
-            print("Record with alignment rates is empty or not found for sample %s" % sample.sampleName)
+            print("Record with alignment rates is empty or not found for sample %s" % sample.name)
             pass
 
         # Get duplicate stats
         try:
-            sample = sample.append(tk.parseDuplicateStats(sample.dupsMetrics))
+            sample = sample.append(parse_duplicate_stats(sample.dupsMetrics))
         except:
-            print("Record with duplicates is empty or not found for sample %s" % sample.sampleName)
+            print("Record with duplicates is empty or not found for sample %s" % sample.name)
             pass
 
         # Get NSC and RSC
         try:
-            sample = sample.append(tk.parseQC(sample.sampleName, sample.qc))
+            sample = sample.append(parse_qc(sample.name, sample.qc))
         except:
-            print("Record with quality control is empty or not found for sample %s" % sample.sampleName)
+            print("Record with quality control is empty or not found for sample %s" % sample.name)
             pass
 
         # Count peak number (if peaks exist)
@@ -276,18 +274,18 @@ def readStats(args, prj):
             if str(sample.peaks) != "nan":
                 # if peak file exist
                 if os.path.exists(sample.peaks):
-                    sample = tk.getPeakNumber(sample)
+                    sample = get_peak_number(sample)
 
         # Get FRiP from file (if exists) and add to sheet
         if hasattr(sample, "peaks"):
             # if sample has peaks
             if str(sample.peaks) != "nan":
                 try:
-                    sample = getFRiP(sample)
+                    sample = get_frip(sample)
                 except:
-                    print("Record with FRiP value is empty or not found for sample %s" % sample.sampleName)
+                    print("Record with FRiP value is empty or not found for sample %s" % sample.name)
                     pass
-        samples[sample.sampleName] = sample
+        samples[sample.name] = sample
 
     # write annotation sheet with statistics
     samples.T.to_csv(prj.sampleStats, index=False)
@@ -297,6 +295,131 @@ def readStats(args, prj):
 
 def compare(args, prj):
     raise NotImplementedError
+
+
+def parse_bowtie_stats(stats_file):
+    """
+    Parses Bowtie2 stats file, returns series with values.
+
+    :param stats_file: Bowtie2 output file with alignment statistics.
+    :type stats_file: str
+    """
+    import re
+
+    stats = pd.Series(index=["readCount", "unpaired", "unaligned", "unique", "multiple", "alignmentRate"])
+
+    try:
+        with open(stats_file) as handle:
+            content = handle.readlines()  # list of strings per line
+    except:
+        return stats
+
+    # total reads
+    try:
+        line = [i for i in range(len(content)) if " reads; of these:" in content[i]][0]
+        stats["readCount"] = re.sub("\D.*", "", content[line])
+        if 7 > len(content) > 2:
+            line = [i for i in range(len(content)) if "were unpaired; of these:" in content[i]][0]
+            stats["unpaired"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        else:
+            line = [i for i in range(len(content)) if "were paired; of these:" in content[i]][0]
+            stats["unpaired"] = stats["readCount"] - int(re.sub("\D", "", re.sub("\(.*", "", content[line])))
+        line = [i for i in range(len(content)) if "aligned 0 times" in content[i]][0]
+        stats["unaligned"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if "aligned exactly 1 time" in content[i]][0]
+        stats["unique"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if "aligned >1 times" in content[i]][0]
+        stats["multiple"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if "overall alignment rate" in content[i]][0]
+        stats["alignmentRate"] = re.sub("\%.*", "", content[line]).strip()
+    except IndexError:
+        pass
+    return stats
+
+
+def parse_duplicate_stats(stats_file):
+    """
+    Parses Bowtie2 stats file, returns series with values.
+
+    :param stats_file: Bowtie2 output file with alignment statistics.
+    :type stats_file: str
+    """
+    import re
+
+    series = pd.Series()
+
+    try:
+        with open(stats_file) as handle:
+            content = handle.readlines()  # list of strings per line
+    except:
+        return series
+
+    try:
+        line = [i for i in range(len(content)) if "single ends (among them " in content[i]][0]
+        series["single-ends"] = re.sub("\D", "", re.sub("\(.*", "", content[line]))
+        line = [i for i in range(len(content)) if " end pairs...   done in " in content[i]][0]
+        series["paired-ends"] = re.sub("\D", "", re.sub("\.\.\..*", "", content[line]))
+        line = [i for i in range(len(content)) if " duplicates, sorting the list...   done in " in content[i]][0]
+        series["duplicates"] = re.sub("\D", "", re.sub("\.\.\..*", "", content[line]))
+    except IndexError:
+        pass
+    return series
+
+
+def parse_qc(name, qc_file):
+    """
+    Parses QC table produced by phantompeakqualtools (spp) and returns sample quality metrics.
+
+    :param name: Sample name.
+    :type name: str
+    :param qc_file: phantompeakqualtools output file sample quality measurements.
+    :type qc_file: str
+    """
+    series = pd.Series()
+    try:
+        with open(qc_file) as handle:
+            line = handle.readlines()[0].strip().split("\t")  # list of strings per line
+        series["NSC"] = line[-3]
+        series["RSC"] = line[-2]
+        series["qualityTag"] = line[-1]
+    except:
+        pass
+    return series
+
+
+def get_peak_number(sample):
+    """
+    Counts number of peaks from a sample's peak file.
+
+    :param sample: A Sample object with the "peaks" attribute.
+    :type name: pipelines.Sample
+    """
+    import subprocess
+    import re
+
+    proc = subprocess.Popen(["wc", "-l", sample.peaks], stdout=subprocess.PIPE)
+    out, err = proc.communicate()
+    sample["peakNumber"] = re.sub("\D.*", "", out)
+
+    return sample
+
+
+def get_frip(sample):
+    """
+    Calculates the fraction of reads in peaks for a given sample.
+
+    :param sample: A Sample object with the "peaks" attribute.
+    :type name: pipelines.Sample
+    """
+    import re
+
+    with open(sample.frip, "r") as handle:
+        content = handle.readlines()
+
+    reads_in_peaks = int(re.sub("\D", "", content[0]))
+    mapped_reads = sample["readCount"] - sample["unaligned"]
+
+    return pd.Series(reads_in_peaks / mapped_reads, index="FRiP")
 
 
 if __name__ == '__main__':

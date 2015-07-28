@@ -452,7 +452,7 @@ def plotInsertSizesFit(bam, plot, outputCSV, maxInsert=1500, smallestInsert=30):
         ["4th nucleosome", simps(mlab.normpdf(x, m4, s4) * w1), max(mlab.normpdf(x, m4, s4) * w4)]
     ]
 
-    try:    
+    try:
         import csv
 
         with open(outputCSV, "w") as f:
@@ -490,7 +490,7 @@ def bamToBigWig(inputBam, outputBigWig, genomeSizes, genome, tagmented=False, no
         cmds.append("""awk 'NR==FNR{{sum+= $4; next}}{{ $4 = ($4 / sum) * 1000000; print}}' {0}.cov {0}.cov > {0}.normalized.cov""".format(transientFile))
 
     cmds.append("bedGraphToBigWig {0}{1}.cov {2} {3}".format(transientFile, ".normalized" if normalize else "", genomeSizes, outputBigWig))
-    
+
     # remove tmp files
     cmds.append("if [[ -s {0}.cov ]]; then rm {0}.cov; fi".format(transientFile))
     if normalize:
@@ -596,7 +596,7 @@ def macs2CallPeaks(treatmentBam, outputDir, sampleName, genome, controlBam=None,
 def macs2CallPeaksATACSeq(treatmentBam, outputDir, sampleName, genome):
 
     sizes = {"hg38": 2.7e9, "hg19": 2.7e9, "mm10": 1.87e9, "dr7": 1.412e9}
-    
+
     cmd = "macs2 callpeak -t {0}".format(treatmentBam)
     cmd += " --nomodel --extsize 147 -g {0} -n {1} --outdir {2}".format(sizes[genome], sampleName, outputDir)
 

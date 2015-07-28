@@ -7,7 +7,7 @@ ATAC-seq pipeline
 from argparse import ArgumentParser
 import os
 import sys
-from pipelines import toolkit as tk
+from . import toolkit as tk
 import cPickle as pickle
 from pypiper import Pypiper
 
@@ -24,7 +24,10 @@ __status__ = "Development"
 
 def main():
     # Parse command-line arguments
-    parser = ArgumentParser(description="ATAC-seq pipeline.")
+    parser = ArgumentParser(
+        prog="atacseq-pipeline",
+        description="ATAC-seq pipeline."
+    )
     parser = mainArgParser(parser)
     args = parser.parse_args()
     # save pickle
@@ -264,7 +267,7 @@ def process(args, prj, sample):
     # pipe.timestamp("Filtering peaks in low mappability regions")
 
     # # get closest read length of sample to available mappability read lengths
-    # closestLength = min(prj.config["annotations"]["alignability"][sample.genome].keys(), key=lambda x:abs(x - sample.readLength)) 
+    # closestLength = min(prj.config["annotations"]["alignability"][sample.genome].keys(), key=lambda x:abs(x - sample.readLength))
 
     # cmd = tk.filterPeaksMappability(
     #     peaks=sample.peaks,

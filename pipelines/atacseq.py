@@ -223,7 +223,7 @@ def process(args, prj, sample):
     )
 
     # Plot fragment distribution
-    if sample.paired:
+    if sample.paired and not os.path.exists(sample.insertplot):
         pipe.timestamp("Plotting insert size distribution")
         tk.plotInsertSizesFit(
             bam=sample.filtered,

@@ -161,13 +161,15 @@ class Project(object):
                 # logger.error("cannot change folder's mode: %s" % d)
                 continue
 
-    def addSampleSheet(self, csv):
+    def addSampleSheet(self, csv, permissive=True):
         """
         Build a `SampleSheet` object from a csv file and
         add it and its samples to the project.
 
         :param csv: Path to csv file.
         :type csv: str
+        :param permissive: Should throw error if sample file is not found/readable?.
+        :type permissive: bool
         """
         # Make SampleSheet object
         self.sheet = SampleSheet(csv)
@@ -389,6 +391,8 @@ class Sample(object):
 
     :param series: Pandas `Series` object.
     :type series: pandas.Series
+    :param permissive: Should throw error if sample file is not found/readable?.
+    :type permissive: bool
 
     :Example:
 
@@ -400,7 +404,7 @@ class Sample(object):
     # Originally, this object was inheriting from _pd.Series,
     # but complications with serializing and code maintenance
     # made me go back and implement it as a top-level object
-    def __init__(self, series):
+    def __init__(self, series, permissive=True):
         from os.path import expanduser
 
         # Passed series must either be a pd.Series or a daugther class
@@ -431,7 +435,7 @@ class Sample(object):
         self.getTrackColour()
 
         # Get read type
-        self.getReadType()
+        self.getReadType(permissive=permissive)
 
         # Sample dirs
         self.dirs = Paths()
@@ -473,13 +477,15 @@ class Sample(object):
         """
         return _pd.Series(self.__dict__)
 
-    def getReadType(self, n=10):
+    def getReadType(self, n=10, permissive=True):
         """
         Gets the read type (single, paired) and length of bam file.
         Returns tuple of (readType=string, readLength=int).
 
         :param n: Number of reads to read to determine read type. Default=10.
         :type n: int
+        :param permissive: Should throw error if sample file is not found/readable?.
+        :type permissive: bool
         """
         import subprocess as sp
         from collections import Counter
@@ -506,7 +512,15 @@ class Sample(object):
                 n -= 1
             p.kill()
         except:
-            raise IOError("Bam file does not exist or cannot be read: %s" % bam)
+            if not permissive:
+                raise IOError("Bam file does not exist or cannot be read: %s" % bam)
+            else:
+                print(Warning("Bam file does not exist or cannot be read: %s" % bam))
+                self.readLength = None
+                self.readType = None
+                self.paired = None
+
+                return
 
         # Get most abundant read length
         self.readLength = sorted(readLength)[-1]

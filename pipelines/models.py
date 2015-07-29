@@ -788,8 +788,7 @@ class QuantseqSample(Sample):
         self.filtered = _os.path.join(self.dirs.mapped, self.name + ".trimmed.bowtie2.filtered.bam")
         # ercc alignments
         self.erccMapped = _os.path.join(self.dirs.mapped, self.name + "_ercc.bam")
-        self.erccDups = _os.path.join(self.dirs.mapped, self.name + "_ercc.dups.bam")
-        self.erccNodups = _os.path.join(self.dirs.mapped, self.name + "_ercc.nodups.bam")
+        self.erccFiltered = _os.path.join(self.dirs.mapped, self.name + "_ercc.filtered.bam")
         # kallisto pseudoalignments
         self.pseudomapped = _os.path.join(self.dirs.mapped, self.name + ".pseudoalignment.bam")
 

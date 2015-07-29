@@ -1,7 +1,7 @@
 pipelines
 =========
 
-[![Code Health](https://landscape.io/github/afrendeiro/pipelines/master/landscape.svg?style=flat)](https://landscape.io/github/afrendeiro/pipelines/master)
+[![Build Status](https://travis-ci.org/afrendeiro/pipelines.svg?branch=master)](https://travis-ci.org/afrendeiro/pipelines) [![Code Health](https://landscape.io/github/afrendeiro/pipelines/master/landscape.svg?style=flat)](https://landscape.io/github/afrendeiro/pipelines/master)
 
 ## Instalation
 Clone the repository

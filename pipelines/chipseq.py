@@ -85,7 +85,7 @@ def process(args, prj, sample):
 
     # Fastqc
     pipe.timestamp("Measuring sample quality with Fastqc")
-    cmd = tk.fastQC(
+    cmd = tk.fastqc(
         inputBam=sample.unmappedBam,
         outputDir=sample.dirs.sampleRoot,
         sampleName=sample.name

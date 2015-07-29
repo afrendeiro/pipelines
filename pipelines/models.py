@@ -43,6 +43,7 @@ prj.addSampleSheet("sample_annotation.csv")
 import os as _os
 import pandas as _pd
 import yaml as _yaml
+import warnings as _warnings
 
 
 class Paths(object):
@@ -515,7 +516,7 @@ class Sample(object):
             if not permissive:
                 raise IOError("Bam file does not exist or cannot be read: %s" % bam)
             else:
-                print(Warning("Bam file does not exist or cannot be read: %s" % bam))
+                print(_warnings.warn("Bam file does not exist or cannot be read: %s" % bam))
                 self.readLength = None
                 self.readType = None
                 self.paired = None

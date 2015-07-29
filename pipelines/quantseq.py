@@ -175,7 +175,7 @@ def process(args, prj, sample):
         cpus=args.cpus,
         Q=args.quality
     )
-    pipe.call_lock(cmd, sample.filtered, shell=True)
+    pipe.call_lock(cmd, sample.erccFiltered, shell=True)
 
     # Sort and index
     pipe.timestamp("Sorting and indexing reads")

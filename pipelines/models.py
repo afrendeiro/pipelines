@@ -743,7 +743,7 @@ class ATACseqSample(ChIPseqSample):
 
         # Peaks: peaks called and derivate files
         self.dirs.peaks = _os.path.join(self.dirs.sampleRoot, "peaks")
-        self.peaks = _os.path.join(self.dirs.peaks, self.name + "_peaks.broadPeak")
+        self.peaks = _os.path.join(self.dirs.peaks, self.name + "_peaks.narrowPeak")
         self.filteredPeaks = _os.path.join(self.dirs.peaks, self.name + "_peaks.filtered.bed")
 
 

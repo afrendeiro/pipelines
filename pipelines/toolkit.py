@@ -351,6 +351,8 @@ def plotInsertSizesFit(bam, plot, outputCSV, maxInsert=1500, smallestInsert=30):
         import matplotlib.mlab as mlab
         from scipy.optimize import curve_fit
         from scipy.integrate import simps
+        import matplotlib
+        matplotlib.use('Agg')
         import matplotlib.pyplot as plt
     except:
         print("Necessary Python modules couldn't be loaded.")

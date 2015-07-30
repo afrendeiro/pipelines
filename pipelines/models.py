@@ -294,6 +294,8 @@ class SampleSheet(object):
             return ATACseqSample(series)
         elif technique in self.config["techniques"]["quantseq"]:
             return QuantseqSample(series)
+        elif technique in self.config["techniques"]["chemseq"]:
+            return ChemseqSample(series)
         else:
             raise TypeError("Sample is not in known sample class.")
             # I might want to change this behaviour to return a generic sample
@@ -797,3 +799,21 @@ class QuantseqSample(Sample):
         self.quant = _os.path.join(self.dirs.quant, "tophat-htseq_quantification.tsv")
         self.erccQuant = _os.path.join(self.dirs.quant, "tophat-htseq_quantification_ercc.tsv")
         self.kallistoQuant = _os.path.join(self.dirs.quant, "abundance.tsv")
+
+
+class ChemseqSample(ChIPseqSample):
+    """
+    Class to model Chem-seq samples based on the ChIPseqSample class.
+
+    :param series: Pandas `Series` object.
+    :type series: pandas.Series
+    """
+    def __init__(self, series):
+
+        # Use _pd.Series object to have all sample attributes
+        if not isinstance(series, _pd.Series):
+            raise TypeError("Provided object is not a pandas Series.")
+        super(ChemseqSample, self).__init__(series)
+
+    def __repr__(self):
+        return "Chem-seq sample '%s'" % self.name

@@ -725,7 +725,7 @@ class ATACseqSample(ChIPseqSample):
         Sets the paths of all files for this sample.
         """
         # Inherit paths from Sample by running Sample's setFilePaths()
-        super(ChIPseqSample, self).setFilePaths()
+        super(ATACseqSample, self).setFilePaths()
 
         # Files in the root of the sample dir
         self.frip = _os.path.join(self.dirs.sampleRoot, self.name + "_FRiP.txt")

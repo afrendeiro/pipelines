@@ -262,7 +262,7 @@ def read_stats(prj):
 
         # Get NSC and RSC
         try:
-            sample = sample.append(parse_qc(sample.name, sample.qc))
+            sample = sample.append(parse_qc(sample.qc))
         except:
             print("Record with quality control is empty or not found for sample %s" % sample.name)
 

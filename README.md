@@ -1,3 +1,6 @@
+### https://github.com/afrendeiro/pipelines/ is deprecated!
+### See https://github.com/epigen/open_pipelines/ for NGS pipelines and https://github.com/epigen/looper/ for a pipeline/job submission engine/manager
+
 pipelines
 =========
 
